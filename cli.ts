@@ -3,14 +3,14 @@
 const { argv } = require('yargs');
 import { readFileSync, writeFileSync, readdirSync, write } from 'fs';
 import { execSync } from 'child_process';
-if (argv['package-json']) {                 // create dist/package.json (minus devDeps&scripts)
+if (argv['package-json']) {
     const packageData = JSON.parse(readFileSync('./package.json', 'utf8'));
     delete packageData.devDependencies;
     delete packageData.scripts;
     const json = JSON.stringify(packageData, null, 2);
     writeFileSync('./dist/package.json', json);
     console.info(json);
-} else if (argv['peer-dependencies']) {     // install peer dependencies
+} else if (argv['peer-dependencies']) {
     const packageData = JSON.parse(readFileSync('./package.json', 'utf8'));
     const packages = Object
         .entries(packageData.peerDependencies)
@@ -20,7 +20,6 @@ if (argv['package-json']) {                 // create dist/package.json (minus d
 } else {
     console.info([
         `Usage: hawryschuk [options]`,
-        '\t--package-json       : copies ./package.json to ./dist with the devDependencies and scripts removed',
-        '\t--peer-dependencies  : installs the peer dependencies of the package'
+        '\t--package-json       : copies ./package.json to ./dist with the devDependencies and scripts removed'
     ].join('\n'));
 }

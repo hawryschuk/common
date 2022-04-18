@@ -186,14 +186,24 @@ export class Util {
         }
     }
 
-    static async waitUntil(pred: Function, { retries = Infinity, pause = 250 } = {}) {
+    // Util.while({ condition: ()=>!terminal.owner || !terminal.finished, do: terminal.keepAlive, pause: 1000 })
+    static async while({ condition, do: _do, pause = 1000, ignoreErrors = false } = {} as { condition: Function; do: Function; pause?: number; ignoreErrors?: boolean; }) {
+        while (!await condition()) {
+            await Util.pause(pause);
+            await _do().catch(e => { if (!ignoreErrors) throw e });
+        }
+    }
+
+    static async waitUntil(pred: Function, { retries = Infinity, pause = 250, timeElapsed = Infinity } = {}) {
+        const startTime = new Date().getTime();
         while (1) {
             const result = await pred();
             if (result) {
                 return result;
             } else {
                 retries--;
-                if (retries <= 0) { throw new Error(`Util.waitUntil: timeout`); }
+                if (retries <= 0) { throw new Error(`Util.waitUntil: timeout-retries`); }
+                if ((new Date().getTime() - startTime) > timeElapsed) throw new Error('Util.waitUntil: timeout-timeElapsed')
                 await this.pause(pause);
             }
         }
