@@ -4,6 +4,14 @@ export class Util {
     static defaults = { timeout: 300000, pause: 1000 };
     static debug = false;
 
+    static range({ min = 1, max = 10 }) {
+        return new Array(max - min + 1).fill(0).map((v, i) => i + min)
+    }
+
+    static random({ min = 0, max = 1 }) {
+        return min + Math.floor(Math.random() * (max - min + 1))
+    }
+
     static round(value: number, step = 0.5) { return Math.round(value / step) * step }
 
     static warn(stuff: any) { console.warn(JSON.stringify(stuff, null, 2)); }
@@ -12,7 +20,7 @@ export class Util {
 
     static get UUID() { return new Array(32).fill(0).map(i => Math.floor(Math.random() * 0xF).toString(0xF)).join('') }
 
-    static unique(arr: any[]) { return Array.from(new Set(arr)); }
+    static unique<T = any>(arr: T[]): T[] { return Array.from(new Set(arr)); }
 
     static unique2<T = any>(arr: T[]): T[] {
         return arr.reduce((unique, item) => {
@@ -186,8 +194,17 @@ export class Util {
         }
     }
 
-    // Util.while({ condition: ()=>!terminal.owner || !terminal.finished, do: terminal.keepAlive, pause: 1000 })
-    static async while({ condition, do: _do, pause = 1000, ignoreErrors = false } = {} as { condition: Function; do: Function; pause?: number; ignoreErrors?: boolean; }) {
+    static async while({
+        condition,
+        do: _do,
+        pause = 1000,
+        ignoreErrors = false
+    } = {} as {
+        condition: Function;
+        do: Function;
+        pause?: number;
+        ignoreErrors?: boolean;
+    }) {
         while (!await condition()) {
             await Util.pause(pause);
             await _do().catch(e => { if (!ignoreErrors) throw e });
@@ -216,5 +233,56 @@ export class Util {
             if (index >= 0) removed.push(...arr.splice(index, 1));
         }
         return removed;
+    }
+
+    static factorial(num: number) {
+        if (num <= 1) return 1;
+        return ((this as any)['cachedFactorials'] ||= {})[num] = (() => {
+            return this.factorial(num - 1) * num;
+        })();
+    }
+
+    /** C(n , k) = n! / [ (n-k)! k! ] */
+    static binomial(n, k): number {
+        return this.factorial(n) / (this.factorial(n - k) * this.factorial(k))
+    }
+
+    /** C(n:T[],k) : T[binomial(n,k)][k | 0..k] */
+    static *choose<T>(array: T[], n: number) {
+        for (let i = 0; i <= array.length - n; i++)
+            if (n === 1)
+                yield [array[i]];
+            else
+                for (const c of this.choose(array.slice(i + 1), n - 1))
+                    yield [array[i], ...c];
+    }
+
+    static powerset = (a: any[]) =>
+        a.reduce((a, v) => a.concat(a.map(r => r.concat(v))), [[]]).slice(1)
+
+    /** Gets all arrangements of n[] for sizes [ k | 1 to n.length ] */
+    static *arrange<T>(array: T[]) {
+        if (array.length === 1) {
+            return yield array;
+        } else {
+            yield [array[0]];
+            for (const c of this.arrange(array.slice(1))) {
+                yield c;
+                yield [array[0], ...c];
+            }
+        }
+    }
+
+    static binarySearch(nums: number[], val: number, start = 0, end?: number) {
+        end ??= nums.length - 1;
+        while (start <= end) {
+            const mid = Math.floor((start + end) / 2);
+            if (nums[mid] === val) return mid;
+            else {
+                if (nums[mid] < val) start = mid + 1;
+                else end = mid - 1;
+            }
+        }
+        return -1;
     }
 }
