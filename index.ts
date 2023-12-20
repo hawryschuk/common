@@ -1,1 +1,12 @@
 export { Util } from './util';
+export { BinaryMinHeap } from './BinaryMinHeap';
+export { BinarySearchTree } from './BinarySearchTree';
+export { BinaryTreeNode } from './BinaryTree';
+export { DoublyLinkedList } from './DoublyLinkedList';
+export { LinkedList } from './LinkedList';
+export { Queue } from './Queue';
+export { Stack } from './Stack';
+export { TreeNode } from './TreeNode';
+export { TrieNode } from './Tries';
+export { Trie } from './Trie';
+export { Graph } from './Graph';
