@@ -1,4 +1,5 @@
-const deepEqual = require('deep-equal');
+import equal from 'fast-deep-equal';
+// const deepEqual = require('deep-equal');
 
 export class Util {
     static defaults = { timeout: 300000, pause: 1000 };
@@ -23,10 +24,10 @@ export class Util {
     static unique<T = any>(arr: T[]): T[] { return Array.from(new Set(arr)); }
 
     static unique2<T = any>(arr: T[]): T[] {
-        return arr.reduce((unique, item) => {
+        return arr.reduce((unique: T[], item: T) => {
             if (!unique.includes(item)) unique.push(item);
             return unique;
-        }, []);
+        }, [] as T[]);
     }
 
     static falsy(x: any) { return !x; }
@@ -44,6 +45,17 @@ export class Util {
         );
     }
 
+    static pick<T>(obj: T, props: (keyof T)[]): Partial<T> {
+        return props.reduce((picked, prop) => ({ ...picked, [prop]: obj[prop] }), <any>{});
+    }
+
+    static unpick<T>(obj: T, props: (keyof T)[]): Partial<T> {
+        return Object
+            .entries(obj as any)
+            .filter(([k]) => !props.includes(k as keyof T))
+            .reduce((picked, [k, v]) => ({ ...picked, [k]: v }), <Partial<T>>{});
+    }
+
     static btoa(obj: any): string { return Buffer.from(obj).toString('base64'); }
 
     static atob(b64Encoded: string): any { return Buffer.from(b64Encoded, 'base64').toString(); }
@@ -56,7 +68,7 @@ export class Util {
     /** @example groupBy([{name:'joe',age:30},{name:'x',age:30},{name:'y',age:31}],'age') will return {30:Array(2),31:Array(1)} */
     static groupBy<T>(arr: T[], prop: string): { [prop: string]: T[]; } {
         return arr.reduce(
-            (grouped, item) => {
+            (grouped: any, item: any) => {
                 const propValue = item[prop];
                 const arr = grouped[propValue] = grouped[propValue] || [];
                 arr.push(item);
@@ -89,7 +101,7 @@ export class Util {
 
     /** @example countBy([{name:'x',job:'cleaner'},{name:'y',job:'accountant'}],'job') will return {accountant:1,cleaner:1} */
     static countBy<T = any>(arr: T[], prop: string): { [prop: string]: number; } {
-        return arr.reduce((countedBy, item) => {
+        return arr.reduce((countedBy: any, item: any) => {
             const propValue = item[prop];
             countedBy[propValue] = 1 + (countedBy[propValue] || 0)
             return countedBy;
@@ -97,6 +109,26 @@ export class Util {
     }
 
     static safeStringify = (obj: any, indent = 2) => JSON.stringify(Util.deepClone(obj), null, indent);
+
+    static shallowClone = (obj: any) => JSON.parse(JSON.stringify(obj));
+
+    /** Clone an object deeply optionally including symbols, undefined, and circular structures */
+    static deepClone2(
+        obj: any,
+        { keys = new Set<string>, seen = new WeakMap, symbols = true, circular = true }: {
+            keys?: Set<string>; seen?: WeakMap<any, any>; symbols?: boolean; circular?: boolean;
+        } = {}
+    ) {
+        if (!obj || typeof obj !== "object") return obj;
+        if (seen.has(obj)) return circular ? seen.get(obj) : undefined;
+        const clone: any = obj instanceof Array ? [] : {};
+        seen.set(obj, clone);
+        for (const key of [...(symbols ? Object.getOwnPropertySymbols(obj) : []), ...Object.getOwnPropertyNames(obj)]) {
+            const val = obj[key];
+            clone[key] = this.deepClone2(val, { seen, symbols, circular })
+        }
+        return clone
+    }
 
     static deepClone = (obj: any) => {
         const seen = new WeakSet();
@@ -107,7 +139,7 @@ export class Util {
                 }
                 seen.add(value);
             }
-            return value;
+            return value ?? null;
         }));
     }
 
@@ -121,8 +153,11 @@ export class Util {
     }
 
     static equalsDeep(obj1: any, obj2: any): boolean {
-        return obj1 === obj2 || deepEqual(obj1, obj2);
+        return obj1 === obj2 || equal(obj1, obj2);
     }
+
+    static deepEquals(a: any, b: any) { return this.equalsDeep(a, b) } // TODO: REFACTOR
+
 
     static without<T>(arr: T[], values: any[], { allOccurrences = false } = {}): T[] {
         values = [...values];
@@ -135,7 +170,27 @@ export class Util {
 
     static str = (count = 0, char = ' ') => new Array(count).fill(char).join('');
 
-    static safely(code: any) { try { return code(); } catch (e) { return undefined; } }
+    static safely<T>(code: () => T): T;
+    static safely<T>(code: () => T, details: true): { result: T; error: Error; success: boolean; };
+    static safely<T>(code: () => T, details = false): T | { result: T; error: Error; success: boolean; } {
+        let result, error, success;
+        try { result = code(); success = true; }
+        catch (e) { error = e; success = false; }
+        return <any>(
+            details
+                ? { result, error, success }
+                : result
+        )
+    }
+
+    static async safelyAsync<T>(code: () => Promise<T>): Promise<T>;
+    static async safelyAsync<T>(code: () => Promise<T>, details: true): Promise<{ result: T; error: Error; success: boolean; }>;
+    static async safelyAsync<T>(code: () => Promise<T>, details = false): Promise<T | { result: T; error: Error; success: boolean; }> {
+        const response: any = await code().then(result => ({ result })).catch(error => ({ error }));
+        return details
+            ? Object.assign(response, { success: 'result' in response })
+            : response.result
+    }
 
     static matches<T>(el: T, criteria: any): boolean {
         return Object
@@ -149,7 +204,7 @@ export class Util {
 
     static async pause(ms: number) { await new Promise(resolve => setTimeout(resolve, ms)); }
 
-    static shuffle(array) {
+    static shuffle<T = any>(array: T[]): T[] {
         for (var i = array.length - 1; i > 0; i--) {
             var j = Math.floor(Math.random() * (i + 1));
             var temp = array[i];
@@ -159,9 +214,12 @@ export class Util {
         return array;
     }
 
-    static async timeIt({
-        block = undefined as () => Promise<any>,
+    static async timeIt<T>({
+        block,
         logger = ({ ms, result }) => console.log(`${ms} ms elapsed`)
+    }: {
+        block: () => Promise<T>,
+        logger?: ({ ms, result }: { ms: number; result: T; }) => any
     }): Promise<{ result: any; ms: number; }> {
         const startTime = new Date();
         const result = await block();
@@ -174,10 +232,14 @@ export class Util {
         return arr.find(el => this.matches(el, criteria));
     }
 
-    static async retry({ block, timeout = this.defaults.timeout, retries = Infinity, pause = this.defaults.pause, onError }) {
+    static async retry(
+        { block, timeout = this.defaults.timeout, retries = Infinity, pause = this.defaults.pause, onError }: {
+            block: Function; timeout: number; retries: number; pause: number; onError?: Function
+        }
+    ) {
         const startTime = new Date(); let failures = 0;
         while (true) {
-            let error; const result = await Promise.resolve(1).then(block).catch(e => { error = e });
+            let error; const result = await Promise.resolve(1).then(() => block()).catch(e => { error = e });
             if (!error) return result;        // SUCCESS: return result
             else {                            // FAILURE: track(#failures, timedout, maximumRetries, logErrors), stop || pause-retry
                 failures++;
@@ -207,23 +269,22 @@ export class Util {
     }) {
         while (!await condition()) {
             await Util.pause(pause);
-            await _do().catch(e => { if (!ignoreErrors) throw e });
+            await _do().catch((e: any) => { if (!ignoreErrors) throw e });
         }
     }
 
-    static async waitUntil(pred: Function, { retries = Infinity, pause = 250, timeElapsed = Infinity } = {}) {
+    static async waitUntil<T = any>(pred: () => T | Promise<T>, { retries = Infinity, pause = 250, timeElapsed = Infinity } = {}): Promise<T> {
         const startTime = new Date().getTime();
-        while (1) {
-            const result = await pred();
-            if (result) {
-                return result;
-            } else {
+        let result!: T;
+        while (!result) {
+            if (!(result = await pred())) {
                 retries--;
                 if (retries <= 0) { throw new Error(`Util.waitUntil: timeout-retries`); }
                 if ((new Date().getTime() - startTime) > timeElapsed) throw new Error('Util.waitUntil: timeout-timeElapsed')
                 await this.pause(pause);
             }
         }
+        return result
     }
 
     static removeElements<T>(arr: T[], ...elements: T[]): T[] {
@@ -235,7 +296,7 @@ export class Util {
         return removed;
     }
 
-    static factorial(num: number) {
+    static factorial(num: number): number {
         if (num <= 1) return 1;
         return ((this as any)['cachedFactorials'] ||= {})[num] = (() => {
             return this.factorial(num - 1) * num;
@@ -243,12 +304,12 @@ export class Util {
     }
 
     /** C(n , k) = n! / [ (n-k)! k! ] */
-    static binomial(n, k): number {
+    static binomial(n: number, k: number): number {
         return this.factorial(n) / (this.factorial(n - k) * this.factorial(k))
     }
 
     /** C(n:T[],k) : T[binomial(n,k)][k | 0..k] */
-    static *choose<T>(array: T[], n: number) {
+    static * choose<T>(array: T[], n: number): Generator<T[]> {
         for (let i = 0; i <= array.length - n; i++)
             if (n === 1)
                 yield [array[i]];
@@ -257,11 +318,14 @@ export class Util {
                     yield [array[i], ...c];
     }
 
-    static powerset = (a: any[]) =>
-        a.reduce((a, v) => a.concat(a.map(r => r.concat(v))), [[]]).slice(1)
+    static powerset<T = any>(a: T[]): T[][] {
+        return a
+            .reduce((a: T[][], v: T) => a.concat(a.map(r => r.concat(v))), [[]])
+            .slice(1);
+    }
 
     /** Gets all arrangements of n[] for sizes [ k | 1 to n.length ] */
-    static *arrange<T>(array: T[]) {
+    static * arrange<T>(array: T[]): Generator<T[]> {
         if (array.length === 1) {
             return yield array;
         } else {
@@ -284,5 +348,40 @@ export class Util {
             }
         }
         return -1;
+    }
+
+    /** Get all keys found deeply in an object */
+    static getKeys(obj: any, keys = new Set<string>, seen = new WeakSet) {
+        if (!seen.has(obj) && obj !== undefined) {
+            const _keys: any[] = Object.getOwnPropertyNames(obj);
+            for (const key of _keys) {
+                const val = obj[key];
+                keys.add(key);
+                if (val instanceof Object) this.getKeys(val, keys, seen);
+            }
+        }
+        return keys
+    }
+
+    /** Convert an object to JSON with sorted keys and pretty printing */
+    static toJSON<T = any>(obj: T, pretty = false): string {
+        return JSON.stringify(obj, [...this.getKeys(obj)].sort(), pretty ? 2 : 0)
+    }
+
+    static async ArrayFromAsyncGenerator<T = any>(items: AsyncGenerator<T>) {
+        const arr: T[] = [];
+        for await (const item of items) arr.push(item);
+        return arr;
+    }
+
+    static toBase64(binary: Object): string;
+    static toBase64(binary: string): string;
+    static toBase64(binary: string | Object) { return Buffer.from(typeof binary === 'string' ? binary : JSON.stringify(binary), 'binary').toString('base64') }
+    static fromBase64(base64: string) { return Buffer.from(base64, 'base64').toString('binary') }
+
+    static clearAllProperties(obj: any, incudeSymbols = true) {
+        for (const symbol of Object.getOwnPropertySymbols(obj)) delete obj[symbol];
+        for (const name of Object.getOwnPropertyNames(obj)) delete obj[name];
+        return obj;
     }
 }
