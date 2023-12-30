@@ -45,6 +45,17 @@ export class Util {
         );
     }
 
+    static pick<T>(obj: T, props: (keyof T)[]): Partial<T> {
+        return props.reduce((picked, prop) => ({ ...picked, [prop]: obj[prop] }), <any>{});
+    }
+
+    static unpick<T>(obj: T, props: (keyof T)[]): Partial<T> {
+        return Object
+            .entries(obj as any)
+            .filter(([k]) => !props.includes(k as keyof T))
+            .reduce((picked, [k, v]) => ({ ...picked, [k]: v }), <Partial<T>>{});
+    }
+
     static btoa(obj: any): string { return Buffer.from(obj).toString('base64'); }
 
     static atob(b64Encoded: string): any { return Buffer.from(b64Encoded, 'base64').toString(); }
@@ -97,9 +108,41 @@ export class Util {
         }, {});
     }
 
-    static safeStringify = (obj: any, indent = 2) => JSON.stringify(Util.deepClone({ obj }), null, indent);
+    static safeStringify = (obj: any, indent = 2) => JSON.stringify(Util.deepClone(obj), null, indent);
 
     static shallowClone = (obj: any) => JSON.parse(JSON.stringify(obj));
+
+    /** Clone an object deeply optionally including symbols, undefined, and circular structures */
+    static deepClone2(
+        obj: any,
+        { keys = new Set<string>, seen = new WeakMap, symbols = true, circular = true }: {
+            keys?: Set<string>; seen?: WeakMap<any, any>; symbols?: boolean; circular?: boolean;
+        } = {}
+    ) {
+        if (!obj || typeof obj !== "object") return obj;
+        if (seen.has(obj)) return circular ? seen.get(obj) : undefined;
+        const clone: any = obj instanceof Array ? [] : {};
+        seen.set(obj, clone);
+        for (const key of [...(symbols ? Object.getOwnPropertySymbols(obj) : []), ...Object.getOwnPropertyNames(obj)]) {
+            const val = obj[key];
+            clone[key] = this.deepClone2(val, { seen, symbols, circular })
+        }
+        return clone
+    }
+
+    static deepClone = (obj: any) => {
+        const seen = new WeakSet();
+        return obj && JSON.parse(JSON.stringify(obj, (key, value) => {
+            if (typeof value === "object" && value !== null) {
+                if (seen.has(value)) {
+                    return;
+                }
+                seen.add(value);
+            }
+            return value ?? null;
+        }));
+    }
+
 
     static equals(obj1: any, obj2: any) {
         const values = [obj1, obj2].map(v =>
@@ -308,10 +351,9 @@ export class Util {
     }
 
     /** Get all keys found deeply in an object */
-    static getKeys(obj: any, keys = new Set<string>, seen = new WeakSet, symbols = true) {
+    static getKeys(obj: any, keys = new Set<string>, seen = new WeakSet) {
         if (!seen.has(obj) && obj !== undefined) {
             const _keys: any[] = Object.getOwnPropertyNames(obj);
-            if (symbols) _keys.push(...Object.getOwnPropertySymbols(obj));
             for (const key of _keys) {
                 const val = obj[key];
                 keys.add(key);
@@ -321,36 +363,8 @@ export class Util {
         return keys
     }
 
-    /** Clone an object deeply optionally including symbols, undefined, and circular structures */
-    static deepClone(
-        obj: any,
-        { keys = new Set<string>, seen = new WeakMap, symbols = true, circular = true }: {
-            keys?: Set<string>; seen?: WeakMap<any, any>; symbols?: boolean; circular?: boolean;
-        } = {}
-    ) {
-        if (!obj || typeof obj !== "object") return obj;
-        if (seen.has(obj)) return circular ? seen.get(obj) : undefined;
-        const clone: any = obj instanceof Array ? [] : {};
-        seen.set(obj, clone);
-        for (const key of [...(symbols ? Object.getOwnPropertySymbols(obj) : []), ...Object.getOwnPropertyNames(obj)]) {
-            const val = obj[key];
-            clone[key] = typeof val === "object" && val !== null
-                ? this.deepClone(val, { seen, symbols, circular })
-                : val;
-        }
-        return clone
-    }
-
     /** Convert an object to JSON with sorted keys and pretty printing */
-    static toJSON<T = any>(obj: T, pretty = false, nullifyUndefined = false): string {
-        const seen = new WeakSet();
-        obj = JSON.parse(JSON.stringify(obj, (key, value) => {
-            if (typeof value === "object" && value !== null) {
-                if (seen.has(value)) return
-                else seen.add(value);
-            }
-            return nullifyUndefined ? value ?? null : value;
-        }));
+    static toJSON<T = any>(obj: T, pretty = false): string {
         return JSON.stringify(obj, [...this.getKeys(obj)].sort(), pretty ? 2 : 0)
     }
 
