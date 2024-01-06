@@ -30,6 +30,12 @@ export class Util {
         }, [] as T[]);
     }
 
+    static pushUnique<T>(arr: T[], el: T) {
+        if (arr.includes(el)) return false;
+        arr.push(el);
+        return true
+    }
+
     static falsy(x: any) { return !x; }
 
     static truthy(x: any) { return !!x; }
@@ -37,7 +43,8 @@ export class Util {
     /** @example pluck( [{name:'x'},{name:'y'}],'name') will return ['x','y']
      *  @example pluck( [{name:'x'},{name:'y'}],'name','age') will return [{name:'x',age:undefined},{name:'y',age:undefined}]
      * **/
-    static pluck<T = any>(arr: any[], ...keys: string[]): T[] {
+    static pluck<T>(arr: T[], key: keyof T): T[keyof T][];
+    static pluck<T = any>(arr: any[], ...keys: string[]): Partial<T>[] {
         return arr.map(i =>
             keys.length > 1
                 ? keys.reduce((plucked, key) => ({ ...plucked, [key]: i[key] }), {})
@@ -130,6 +137,7 @@ export class Util {
         return clone
     }
 
+    /** Clones an object and all sub-objects as well , named properties only , avoiding cyclical references */
     static deepClone = (obj: any) => {
         const seen = new WeakSet();
         return obj && JSON.parse(JSON.stringify(obj, (key, value) => {
@@ -228,6 +236,20 @@ export class Util {
         return { result, ms };
     }
 
+    static timeItSync<T>({
+        block,
+        logger = ({ ms, result }) => console.log(`${ms} ms elapsed`)
+    }: {
+        block: () => T,
+        logger?: ({ ms, result }: { ms: number; result: T; }) => any
+    }): { result: any; ms: number; } {
+        const startTime = new Date();
+        const result = block();
+        const ms = new Date().getTime() - startTime.getTime();
+        logger && logger({ ms, result });
+        return { result, ms };
+    }
+
     static findWhere<T>(arr: T[], criteria: any): T | undefined {
         return arr.find(el => this.matches(el, criteria));
     }
@@ -271,6 +293,26 @@ export class Util {
             await Util.pause(pause);
             await _do().catch((e: any) => { if (!ignoreErrors) throw e });
         }
+    }
+
+    /** Allow #users to run simultaneously, allowing 1 item to be queued  */
+    static throttle<T>({ resource = this.UUID, block, users = 1, queue = 1 }: { resource?: any; block: () => Promise<T>; users?: number; queue?: number; }) {
+        const throttled: any[] = ((this as any)[Symbol.for('throttled')] ||= {})[resource] ||= [];
+        const me = { block, throttled: false, id: Util.UUID };
+        throttled.push(me);
+        if (throttled.length > users + queue) throttled.slice(users).reverse().slice(queue).forEach(i => i.throttled = true);
+        return (async () => {
+            await this.waitUntil(() => { return me.throttled || throttled.slice(0, users).includes(me) });
+            if (me.throttled) {
+                throttled.splice(throttled.indexOf(me), 1);
+                return { throttled: true };
+            } else {
+                const result = await me.block().then(success => ({ success })).catch(error => ({ error }));
+                throttled.splice(throttled.indexOf(me), 1);
+                if ('error' in result) throw result.error;
+                else return result;
+            }
+        })()
     }
 
     static async waitUntil<T = any>(pred: () => T | Promise<T>, { retries = Infinity, pause = 250, timeElapsed = Infinity } = {}): Promise<T> {
@@ -383,5 +425,25 @@ export class Util {
         for (const symbol of Object.getOwnPropertySymbols(obj)) delete obj[symbol];
         for (const name of Object.getOwnPropertyNames(obj)) delete obj[name];
         return obj;
+    }
+
+    static getUnrotatedCoordinates(
+        { rotatedX, rotatedY, rotationDegrees, rotationPoint }:
+            { rotatedX: number; rotatedY: number; rotationDegrees: number; rotationPoint: { x: number; y: number; }; }
+    ): { x: number; y: number; } {
+        // Convert rotation degrees to radians
+        const radians = ((360 - rotationDegrees) * Math.PI) / 180;
+
+        // Translate the rotated coordinates to the origin
+        const translatedX = rotatedX - rotationPoint.x;
+        const translatedY = rotatedY - rotationPoint.y;
+
+        // Rotate the translated coordinates back to the unrotated position
+        const unrotatedX =
+            rotationPoint.x + translatedX * Math.cos(radians) - translatedY * Math.sin(radians);
+        const unrotatedY =
+            rotationPoint.y + translatedX * Math.sin(radians) + translatedY * Math.cos(radians);
+
+        return { x: unrotatedX, y: unrotatedY };
     }
 }
