@@ -44,12 +44,9 @@ export class Util {
      *  @example pluck( [{name:'x'},{name:'y'}],'name','age') will return [{name:'x',age:undefined},{name:'y',age:undefined}]
      * **/
     static pluck<T>(arr: T[], key: keyof T): T[keyof T][];
-    static pluck<T = any>(arr: any[], ...keys: string[]): Partial<T>[] {
-        return arr.map(i =>
-            keys.length > 1
-                ? keys.reduce((plucked, key) => ({ ...plucked, [key]: i[key] }), {})
-                : i[keys[0]]
-        );
+    static pluck<T = any>(arr: any[], ...keys: (keyof T)[]): Partial<T>[];
+    static pluck<T = any>(arr: any[], ...keys: (keyof T)[]): Partial<T>[] {
+        return arr.map(i => keys.length > 1 ? this.pick(i, keys) : i[keys[0]]);
     }
 
     static pick<T>(obj: T, props: (keyof T)[]): Partial<T> {
@@ -117,7 +114,7 @@ export class Util {
 
     static safeStringify = (obj: any, indent = 2) => JSON.stringify(Util.deepClone(obj), null, indent);
 
-    static shallowClone = (obj: any) => JSON.parse(JSON.stringify(obj));
+    static shallowClone = (obj: any) => obj ? JSON.parse(JSON.stringify(obj)) : obj;
 
     /** Clone an object deeply optionally including symbols, undefined, and circular structures */
     static deepClone2(
@@ -296,23 +293,21 @@ export class Util {
     }
 
     /** Allow #users to run simultaneously, allowing 1 item to be queued  */
-    static throttle<T>({ resource = this.UUID, block, users = 1, queue = 1 }: { resource?: any; block: () => Promise<T>; users?: number; queue?: number; }) {
-        const throttled: any[] = ((this as any)[Symbol.for('throttled')] ||= {})[resource] ||= [];
-        const me = { block, throttled: false, id: Util.UUID };
-        throttled.push(me);
-        if (throttled.length > users + queue) throttled.slice(users).reverse().slice(queue).forEach(i => i.throttled = true);
-        return (async () => {
-            await this.waitUntil(() => { return me.throttled || throttled.slice(0, users).includes(me) });
-            if (me.throttled) {
-                throttled.splice(throttled.indexOf(me), 1);
-                return { throttled: true };
-            } else {
-                const result = await me.block().then(success => ({ success })).catch(error => ({ error }));
-                throttled.splice(throttled.indexOf(me), 1);
-                if ('error' in result) throw result.error;
-                else return result;
-            }
-        })()
+    static throttle<T>({ resource = this.UUID, block, users = 1, queue = 1 }: { resource?: any; block?: () => Promise<T>; users?: number; queue?: number; }) {
+        const throttled = (this as any)[Symbol.for('throttled')] ||= new Map<any, {}>();
+        const state = throttled.get(resource) || (() => {
+            const state = { busy: 0, queue: [] };
+            throttled.set(resource, state);
+            return state;
+        })();
+        if (block) {
+            state.queue.unshift(block);
+            state.queue.splice(queue);
+        }
+        while (state.busy < users && state.queue.length) {
+            state.busy++;
+            state.queue.shift()().catch((e: any) => { }).then(() => state.busy--, this.throttle({ resource, users, queue }));
+        }
     }
 
     static async waitUntil<T = any>(pred: () => T | Promise<T>, { retries = Infinity, pause = 250, timeElapsed = Infinity } = {}): Promise<T> {
@@ -446,4 +441,88 @@ export class Util {
 
         return { x: unrotatedX, y: unrotatedY };
     }
+
+    static getRotatedCoordinates({ x, y, rotationDegrees, rotationPointX, rotationPointY }: { x: number; y: number; rotationDegrees: number; rotationPointX: number; rotationPointY: number; }): { x: number; y: number; } {
+        // Convert rotation degrees to radians
+        const radians = (rotationDegrees * Math.PI) / 180;
+
+        // Translate the rectangle to the origin
+        const translatedX = x - rotationPointX;
+        const translatedY = y - rotationPointY;
+
+        // Rotate the translated rectangle
+        const rotatedX = translatedX * Math.cos(radians) - translatedY * Math.sin(radians);
+        const rotatedY = translatedX * Math.sin(radians) + translatedY * Math.cos(radians);
+
+        // Translate the rotated rectangle back to its original position
+        const rotatedAndTranslatedX = rotatedX + rotationPointX;
+        const rotatedAndTranslatedY = rotatedY + rotationPointY;
+
+        return { x: rotatedAndTranslatedX, y: rotatedAndTranslatedY };
+    }
+
+    static findOverlappingRectangle(rect1: Rectangle, rect2: Rectangle): Rectangle | null {
+        const xOverlap = Math.max(0, Math.min(rect1.x + rect1.width, rect2.x + rect2.width) - Math.max(rect1.x, rect2.x));
+        const yOverlap = Math.max(0, Math.min(rect1.y + rect1.height, rect2.y + rect2.height) - Math.max(rect1.y, rect2.y));
+        if (xOverlap > 0 && yOverlap > 0) {
+            return {
+                x: Math.max(rect1.x, rect2.x),
+                y: Math.max(rect1.y, rect2.y),
+                width: xOverlap,
+                height: yOverlap,
+            };
+        } else {
+            return null; // No overlapping area
+        }
+    }
+
+    static calculateDistance(point1: Point, point2: Point): number {
+        const dx = point2.x - point1.x;
+        const dy = point2.y - point1.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    static isRectangleInside({ outer, inner }: { outer: Rectangle; inner: Rectangle; }) {
+        return outer.x <= inner.x
+            && outer.y <= inner.y
+            && outer.x + outer.width >= inner.x + inner.width
+            && outer.y + outer.height >= inner.y + inner.height
+    }
+
+    static scaleDownRectangles({ rectangles, scale, pivotPoint, inplace = false }: { rectangles: Rectangle[]; scale: number; pivotPoint: Point; inplace?: boolean; }): Rectangle[] {
+        return rectangles.map(rect => {
+            const deltaX = rect.x - pivotPoint.x;
+            const deltaY = rect.y - pivotPoint.y;
+
+            const scaledX = pivotPoint.x + scale * deltaX;
+            const scaledY = pivotPoint.y + scale * deltaY;
+            const scaledWidth = scale * rect.width;
+            const scaledHeight = scale * rect.height;
+
+            const scaled = {
+                x: scaledX,
+                y: scaledY,
+                width: scaledWidth,
+                height: scaledHeight,
+            };
+
+            if (inplace) Object.assign(rect, scaled);
+
+            return scaled;
+        });
+    }
+
+
+}
+
+export interface Rectangle {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+export interface Point {
+    x: number;
+    y: number;
 }
