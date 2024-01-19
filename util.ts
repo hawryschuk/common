@@ -292,6 +292,33 @@ export class Util {
         }
     }
 
+    /** Will run a block after theres been `delay` amount of rest since its last invocation */
+    static debounce({ block, delay, resource, first = true }: { block?: () => Promise<any>; delay: number; resource?: any; first?: boolean; }) {
+        const time = new Date().getTime();
+        const debounced = (this as any)[Symbol.for('debounced')] ||= new Map<any, {}>();
+        const state = debounced.get(resource) || (() => {
+            const state = { timeout: undefined, busy: false, next: { block: undefined, time: time } };
+            debounced.set(resource, state);
+            return state;
+        })();
+        const canRun = state.next.time + (first ? delay : 0) <= time;
+        state.next.time = time + delay;
+        if (!canRun) {
+            clearTimeout(state.timeout);
+            state.timeout = setTimeout(() => this.debounce({ first: false, delay, resource, block }), state.next.time - time);
+        } else if (state.busy) {
+            state.next.block = block;
+        } else if (block ||= state.next.block) {
+            state.next.block = undefined;
+            state.busy = true;
+            block().catch(console.error).then(() => {
+                state.busy = false;
+                state.next.time = new Date().getTime() + delay;
+                this.debounce({ delay, resource, first: false, });
+            })
+        }
+    }
+
     /** Allow #users to run simultaneously, allowing 1 item to be queued  */
     static throttle<T>({ resource = this.UUID, block, users = 1, queue = 1 }: { resource?: any; block?: () => Promise<T>; users?: number; queue?: number; }) {
         const throttled = (this as any)[Symbol.for('throttled')] ||= new Map<any, {}>();
@@ -306,7 +333,9 @@ export class Util {
         }
         while (state.busy < users && state.queue.length) {
             state.busy++;
-            state.queue.shift()().catch((e: any) => { }).then(() => state.busy--, this.throttle({ resource, users, queue }));
+            state.queue.shift()()
+                .catch(console.error)
+                .then(() => state.busy--, this.throttle({ resource, users, queue }));
         }
     }
 
