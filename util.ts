@@ -40,6 +40,10 @@ export class Util {
 
     static truthy(x: any) { return !!x; }
 
+    static between(val: number, from: number, to: number) {
+        return val >= from && val <= to;
+    }
+
     /** @example pluck( [{name:'x'},{name:'y'}],'name') will return ['x','y']
      *  @example pluck( [{name:'x'},{name:'y'}],'name','age') will return [{name:'x',age:undefined},{name:'y',age:undefined}]
      * **/
@@ -431,6 +435,7 @@ export class Util {
 
     /** Convert an object to JSON with sorted keys and pretty printing */
     static toJSON<T = any>(obj: T, pretty = false): string {
+        obj = this.shallowClone(obj);
         return JSON.stringify(obj, [...this.getKeys(obj)].sort(), pretty ? 2 : 0)
     }
 
@@ -491,14 +496,14 @@ export class Util {
     }
 
     static findOverlappingRectangle(rect1: Rectangle, rect2: Rectangle): Rectangle | null {
-        const xOverlap = Math.max(0, Math.min(rect1.x + rect1.width, rect2.x + rect2.width) - Math.max(rect1.x, rect2.x));
-        const yOverlap = Math.max(0, Math.min(rect1.y + rect1.height, rect2.y + rect2.height) - Math.max(rect1.y, rect2.y));
+        const xOverlap = Math.max(0, Math.min(rect1.x + rect1.w, rect2.x + rect2.w) - Math.max(rect1.x, rect2.x));
+        const yOverlap = Math.max(0, Math.min(rect1.y + rect1.h, rect2.y + rect2.h) - Math.max(rect1.y, rect2.y));
         if (xOverlap > 0 && yOverlap > 0) {
             return {
                 x: Math.max(rect1.x, rect2.x),
                 y: Math.max(rect1.y, rect2.y),
-                width: xOverlap,
-                height: yOverlap,
+                w: xOverlap,
+                h: yOverlap,
             };
         } else {
             return null; // No overlapping area
@@ -511,11 +516,21 @@ export class Util {
         return Math.sqrt(dx * dx + dy * dy);
     }
 
+    static greaterRectangle(rectangles: Rectangle[]) {
+        return rectangles.reduce((all, s) => {
+            all.x = Math.min(all.x ?? s.x, s.x);
+            all.y = Math.min(all.y ?? s.y, s.y);
+            all.w = Math.max(all.w, s.x - all.x);
+            all.h = Math.max(all.h, s.y - all.y);
+            return all;
+        }, { w: 0, h: 0 } as { x: number; y: number; w: number; h: number; });
+    }
+
     static isRectangleInside({ outer, inner }: { outer: Rectangle; inner: Rectangle; }) {
         return outer.x <= inner.x
             && outer.y <= inner.y
-            && outer.x + outer.width >= inner.x + inner.width
-            && outer.y + outer.height >= inner.y + inner.height
+            && outer.x + outer.w >= inner.x + inner.w
+            && outer.y + outer.h >= inner.y + inner.h
     }
 
     static scaleDownRectangles({ rectangles, scale, pivotPoint, inplace = false }: { rectangles: Rectangle[]; scale: number; pivotPoint: Point; inplace?: boolean; }): Rectangle[] {
@@ -525,14 +540,14 @@ export class Util {
 
             const scaledX = pivotPoint.x + scale * deltaX;
             const scaledY = pivotPoint.y + scale * deltaY;
-            const scaledWidth = scale * rect.width;
-            const scaledHeight = scale * rect.height;
+            const scaledWidth = scale * rect.w;
+            const scaledHeight = scale * rect.h;
 
             const scaled = {
                 x: scaledX,
                 y: scaledY,
-                width: scaledWidth,
-                height: scaledHeight,
+                w: scaledWidth,
+                h: scaledHeight,
             };
 
             if (inplace) Object.assign(rect, scaled);
@@ -547,8 +562,8 @@ export class Util {
 export interface Rectangle {
     x: number;
     y: number;
-    width: number;
-    height: number;
+    w: number;
+    h: number;
 }
 
 export interface Point {
