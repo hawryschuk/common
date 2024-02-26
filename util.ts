@@ -343,7 +343,7 @@ export class Util {
         }
     }
 
-    static async waitUntil<T = any>(pred: () => T | Promise<T>, { retries = Infinity, pause = 250, timeElapsed = Infinity } = {}): Promise<T> {
+    static async waitUntil<T = any>(pred: () => T | Promise<T>, { retries = Infinity, pause = 25, timeElapsed = Infinity } = {}): Promise<T> {
         const startTime = new Date().getTime();
         let result!: T;
         while (!result) {
