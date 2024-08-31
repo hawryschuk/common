@@ -41,7 +41,7 @@ export class TreeNode<T>{
     }
 
     /** BFS */
-    async  *BFS() {
+    *BFS() {
         const queue: TreeNode<T>[] = [this];
         let node: TreeNode<T>;
         while (node = queue.shift()) {

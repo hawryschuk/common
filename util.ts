@@ -118,7 +118,7 @@ export class Util {
 
     static safeStringify = (obj: any, indent = 2) => JSON.stringify(Util.deepClone(obj), null, indent);
 
-    static shallowClone = (obj: any) => obj ? JSON.parse(JSON.stringify(obj)) : obj;
+    static shallowClone<T = any>(obj: T): T { return obj ? JSON.parse(JSON.stringify(obj)) : obj; }
 
     /** Clone an object deeply optionally including symbols, undefined, and circular structures */
     static deepClone2(
@@ -229,7 +229,7 @@ export class Util {
     }: {
         block: () => Promise<T>,
         logger?: ({ ms, result }: { ms: number; result: T; }) => any
-    }): Promise<{ result: any; ms: number; }> {
+    }): Promise<{ result: T; ms: number; }> {
         const startTime = new Date();
         const result = await block();
         const ms = new Date().getTime() - startTime.getTime();
@@ -442,6 +442,14 @@ export class Util {
     static async ArrayFromAsyncGenerator<T = any>(items: AsyncGenerator<T>) {
         const arr: T[] = [];
         for await (const item of items) arr.push(item);
+        return arr;
+    }
+
+    static move<T>(arr: Array<T>, item: T, direction: number) {
+        const index = arr.indexOf(item);
+        if (!this.between(index + direction, 0, arr.length - 1)) throw new Error('invalid-position-' + (index + direction));
+        arr.splice(index, 1);
+        arr.splice(index + direction, 0, item);
         return arr;
     }
 
