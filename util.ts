@@ -107,6 +107,28 @@ export class Util {
         }
     }
 
+    static totalPermutations(obj: { [key: string]: any[] }): number {
+        const keys = Object.keys(obj);
+        const lengths = keys.map(key => obj[key].length);
+        return lengths.reduce((total, len) => total * len, 1);
+    }
+
+    static *permutations(obj: { [key: string]: any[] }): Generator<{ [key: string]: any }> {
+        const keys = Object.keys(obj);
+        const totalPermutations = this.totalPermutations(obj);
+        for (let i = 0; i < totalPermutations; i++) {
+            const permutation: { [key: string]: string } = {};
+            let remainder = i;
+            for (const key of keys) {
+                const values = obj[key],
+                    valueIndex = remainder % values.length;
+                permutation[key] = values[valueIndex],
+                    remainder = Math.floor(remainder / values.length);
+            }
+            yield permutation;
+        }
+    }
+
     /** @example countBy([{name:'x',job:'cleaner'},{name:'y',job:'accountant'}],'job') will return {accountant:1,cleaner:1} */
     static countBy<T = any>(arr: T[], prop: string): { [prop: string]: number; } {
         return arr.reduce((countedBy: any, item: any) => {
@@ -207,7 +229,7 @@ export class Util {
             .every(criteriaKey => (el as any)[criteriaKey] === criteria[criteriaKey]);
     }
 
-    static where<T>(arr: T[], criteria: any): T[] {
+    static where<T>(arr: T[], criteria: Partial<T>): T[] {
         return arr.filter(el => this.matches(el, criteria));
     }
 
@@ -255,27 +277,29 @@ export class Util {
         return arr.find(el => this.matches(el, criteria));
     }
 
-    static async retry(
-        { block, timeout = this.defaults.timeout, retries = Infinity, pause = this.defaults.pause, onError }: {
-            block: Function; timeout: number; retries: number; pause: number; onError?: Function
-        }
-    ) {
+    static async retry<T>(
+        { block, timeout = this.defaults.timeout, retries = Infinity, pause = this.defaults.pause, onError }:
+            { block: () => Promise<T>; timeout?: number; retries?: number; pause?: number; onError?: Function }
+    ): Promise<T> {
         const startTime = new Date(); let failures = 0;
         while (true) {
-            let error; const result = await Promise.resolve(1).then(() => block()).catch(e => { error = e });
-            if (!error) return result;        // SUCCESS: return result
-            else {                            // FAILURE: track(#failures, timedout, maximumRetries, logErrors), stop || pause-retry
+            const result = await block()
+                .then(success => ({ success }))
+                .catch(error => ({ error }));
+            if (!('error' in result))
+                return result.success!;         // SUCCESS: return result
+            else {                              // FAILURE: track(#failures, timedout, maximumRetries, logErrors), stop || pause-retry
                 failures++;
                 const timeElapsed = new Date().getTime() - startTime.getTime();
                 const timedout = typeof timeout === 'number' && timeElapsed >= timeout;
                 const maximumRetries = typeof retries === 'number' && failures > retries;
-                Object.assign(error, { failures, timeElapsed, timedout, maximumRetries });
-                if (onError) onError(error)                   // onError handling (ie: logging)
-                if (timedout || maximumRetries) {
-                    throw error;  // Stop     Retrying : Timedout || Max-Retries
-                }
-                await Util.pause(pause);                      // Continue Retrying : After pausing
+                const error = Object.assign(result.error, { failures, timeElapsed, timedout, maximumRetries });
+                if (onError)
+                    onError(error)              // onError handling (ie: logging)
+                if (timedout || maximumRetries)
+                    throw error;                // Stop Retrying : Timedout || Max-Retries
             }
+            await Util.pause(pause);            // Continue Retrying : After pausing
         }
     }
 
@@ -355,6 +379,11 @@ export class Util {
             }
         }
         return result
+    }
+
+    static removeProperties<T>(obj: T, ...props: (keyof T)[]): T {
+        for (const p of props) delete obj[p];
+        return obj;
     }
 
     static removeElements<T>(arr: T[], ...elements: T[]): T[] {
@@ -564,6 +593,12 @@ export class Util {
         });
     }
 
+    static get CLI() {
+        return class {
+            static switches = process.argv.slice(1).map(a => /^--(.+)/.exec(a)?.at(1)).filter(Boolean) as string[];
+            static params = (this.switches.map(s => /^(.+?)=(.+)$/.exec(s)?.slice(1)).filter(Boolean) as string[][]).reduce((p, [k, v]) => Object.assign(p, { [k]: v }), {}) as any;
+        }
+    }
 
 }
 
