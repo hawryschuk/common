@@ -107,27 +107,32 @@ export class Util {
         }
     }
 
-    static totalPermutations(obj: { [key: string]: any[] }): number {
-        const keys = Object.keys(obj);
-        const lengths = keys.map(key => obj[key].length);
+    static totalPermutations(choices: { [key: string]: any[] }): number {
+        const keys = Object.keys(choices);
+        const lengths = keys.map(key => choices[key].length);
         return lengths.reduce((total, len) => total * len, 1);
     }
 
-    static *permutations(obj: { [key: string]: any[] }): Generator<{ [key: string]: any }> {
-        const keys = Object.keys(obj);
-        const totalPermutations = this.totalPermutations(obj);
+    static *permutations<T = any>(choices: { [key: string]: any[] }): Generator<T> {
+        const keys = Object.keys(choices).sort();
+        const totalPermutations = this.totalPermutations(choices);
         for (let i = 0; i < totalPermutations; i++) {
-            const permutation: { [key: string]: string } = {};
+            const permutation: any = {};
             let remainder = i;
             for (const key of keys) {
-                const values = obj[key],
+                const values = choices[key],
                     valueIndex = remainder % values.length;
                 permutation[key] = values[valueIndex],
                     remainder = Math.floor(remainder / values.length);
             }
-            yield permutation;
+            yield permutation as T;
         }
     }
+
+    /** Upgrade to Object.keys
+     * @example keys({ a:1, b:2}) returns Array<'a' | 'b'> 
+     */
+    static keys = <T extends Object>(o: T) => Object.keys(o) as Array<keyof typeof o>;
 
     /** @example countBy([{name:'x',job:'cleaner'},{name:'y',job:'accountant'}],'job') will return {accountant:1,cleaner:1} */
     static countBy<T = any>(arr: T[], prop: string): { [prop: string]: number; } {
@@ -174,13 +179,13 @@ export class Util {
         }));
     }
 
-
     static equals(obj1: any, obj2: any) {
-        const values = [obj1, obj2].map(v =>
-            this.safely(() => JSON.stringify(v))
-            || this.safely(() => JSON.stringify(v.POJO()))
-            || v);
-        return values[0] === values[1];
+        if (obj1 === obj2)
+            return true;
+        else {
+            const json = Util.safely(() => [obj1, obj2].map(v => this.toJSON(v))); // we must use toJSON to ensure consistent predictable toJSON  ( sorted by key )
+            return json ? json[0] === json[1] : undefined;
+        }
     }
 
     static equalsDeep(obj1: any, obj2: any): boolean {
@@ -395,6 +400,8 @@ export class Util {
         return removed;
     }
 
+    static none<T>(arr: T[], pred: (el: T) => boolean = Boolean) { return arr.every(v => !pred(v)) }
+
     static factorial(num: number): number {
         if (num <= 1) return 1;
         return ((this as any)['cachedFactorials'] ||= {})[num] = (() => {
@@ -595,7 +602,7 @@ export class Util {
 
     static get CLI() {
         return class {
-            static switches = process.argv.slice(1).map(a => /^--(.+)/.exec(a)?.at(1)).filter(Boolean) as string[];
+            static switches = process.argv.slice(1).map(a => (/^--(.+)/.exec(a) || [])[1]).filter(Boolean) as string[];
             static params = (this.switches.map(s => /^(.+?)=(.+)$/.exec(s)?.slice(1)).filter(Boolean) as string[][]).reduce((p, [k, v]) => Object.assign(p, { [k]: v }), {}) as any;
         }
     }
