@@ -53,7 +53,7 @@ export class Util {
         return arr.map(i => keys.length > 1 ? this.pick(i, keys) : i[keys[0]]);
     }
 
-    static pick<T>(obj: T, props: (keyof T)[]): Partial<T> {
+    static pick<T, K extends keyof T>(obj: T, props: K[]): Record<K, T[K]> {
         return props.reduce((picked, prop) => ({ ...picked, [prop]: obj[prop] }), <any>{});
     }
 
@@ -270,7 +270,7 @@ export class Util {
     }: {
         block: () => T,
         logger?: ({ ms, result }: { ms: number; result: T; }) => any
-    }): { result: any; ms: number; } {
+    }): { result: T; ms: number; } {
         const startTime = new Date();
         const result = block();
         const ms = new Date().getTime() - startTime.getTime();
@@ -284,11 +284,11 @@ export class Util {
 
     static async retry<T>(
         { block, timeout = this.defaults.timeout, retries = Infinity, pause = this.defaults.pause, onError }:
-            { block: () => Promise<T>; timeout?: number; retries?: number; pause?: number; onError?: Function }
+            { block: (failures: number) => Promise<T>; timeout?: number; retries?: number; pause?: number; onError?: Function }
     ): Promise<T> {
         const startTime = new Date(); let failures = 0;
         while (true) {
-            const result = await block()
+            const result = await block(failures)
                 .then(success => ({ success }))
                 .catch(error => ({ error }));
             if (!('error' in result))
@@ -300,7 +300,7 @@ export class Util {
                 const maximumRetries = typeof retries === 'number' && failures > retries;
                 const error = Object.assign(result.error, { failures, timeElapsed, timedout, maximumRetries });
                 if (onError)
-                    onError(error)              // onError handling (ie: logging)
+                    await onError(error)        // onError handling (ie: logging)
                 if (timedout || maximumRetries)
                     throw error;                // Stop Retrying : Timedout || Max-Retries
             }
@@ -325,51 +325,92 @@ export class Util {
         }
     }
 
-    /** Will run a block after theres been `delay` amount of rest since its last invocation */
-    static debounce({ block, delay, resource, first = true }: { block?: () => Promise<any>; delay: number; resource?: any; first?: boolean; }) {
-        const time = new Date().getTime();
-        const debounced = (this as any)[Symbol.for('debounced')] ||= new Map<any, {}>();
-        const state = debounced.get(resource) || (() => {
-            const state = { timeout: undefined, busy: false, next: { block: undefined, time: time } };
+    /** Will run a block after a delay from now and the last invocation 
+     * - Replaces last queued block
+     * - Executes blocks LIFO
+    */
+    static debounce<T>({ block, delay, resource }: { block?: () => Promise<T>; delay: number; resource?: any; }) {
+        resource ||= block;
+        type STATE = { timeout?: NodeJS.Timeout; busy: boolean; next: { block?: () => Promise<T>, time: number; }; callers: { resolve: (value: T) => void; reject: (reason?: any) => void; }[]; };
+        const time = Date.now();
+        const debounced: Map<any, STATE> = (this as any)[Symbol.for('debounced')] ||= new Map;
+        const state: STATE = debounced.get(resource) || (() => {
+            const state: STATE = { timeout: undefined, busy: false, next: { block: undefined, time }, callers: [] };
             debounced.set(resource, state);
             return state;
         })();
-        const canRun = state.next.time + (first ? delay : 0) <= time;
+        const canRun = state.next.time <= time;
+        const promise = new Promise<T>((resolve, reject) => {
+            if (block) state.callers.push({ resolve, reject });
+            else resolve(undefined as any);
+        })
         state.next.time = time + delay;
         if (!canRun) {
             clearTimeout(state.timeout);
-            state.timeout = setTimeout(() => this.debounce({ first: false, delay, resource, block }), state.next.time - time);
+            state.timeout = setTimeout(() => this.debounce({ delay, resource }), delay);
         } else if (state.busy) {
             state.next.block = block;
         } else if (block ||= state.next.block) {
             state.next.block = undefined;
             state.busy = true;
-            block().catch(console.error).then(() => {
-                state.busy = false;
-                state.next.time = new Date().getTime() + delay;
-                this.debounce({ delay, resource, first: false, });
-            })
+            block()
+                .then((success: T) => ({ success }))
+                .catch((error: Error) => ({ error }))
+                .then(async (result: { success?: T; error?: Error; }) => {
+                    state.busy = false;
+                    state.next.time = Date.now() + delay;
+                    for (const caller of state.callers.splice(0)) {
+                        if ('success' in result) caller.resolve(result.success!);
+                        else caller.reject(result.error!);
+                    }
+                    this.debounce({ delay, resource }); // So the timeout can be restarted, postponing any debounced-block that was added during execution time of this block
+                })
         }
+        return promise;
     }
 
-    /** Allow #users to run simultaneously, allowing 1 item to be queued  */
-    static throttle<T>({ resource = this.UUID, block, users = 1, queue = 1 }: { resource?: any; block?: () => Promise<T>; users?: number; queue?: number; }) {
-        const throttled = (this as any)[Symbol.for('throttled')] ||= new Map<any, {}>();
-        const state = throttled.get(resource) || (() => {
-            const state = { busy: 0, queue: [] };
+    /** Allow X users to run the resource-block simultaneously, allowing Y resource-block items to be queued , and spacing the calls at a minimum of Z ms apart
+     * @example: 2-users, 5s-interval, means 2 calls per 5 seconds
+     * - Ignores blocks when the queue is full
+     * - Executes blocks LIFO
+    */
+    static throttle<T>({ resource, block, users = 1, queue = 1, interval = 0, order = 'LIFO' }: { interval?: number; resource?: any; block?: () => Promise<T>; users?: number; queue?: number; order?: 'LIFO' | 'FIFO' }) {
+        resource ||= block;
+        type STATE = { busy: number; queue: Function[]; callers: { resolve: (value: T) => void; reject: (reason?: any) => void; }[]; calls: number[] };
+        const now = Date.now();
+        const throttled: Map<any, STATE> = (this as any)[Symbol.for('throttled')] ||= new Map;
+        const state: STATE = throttled.get(resource) || (() => {
+            const state: STATE = { busy: 0, queue: [], callers: [], calls: [] };
             throttled.set(resource, state);
             return state;
         })();
-        if (block) {
-            state.queue.unshift(block);
-            state.queue.splice(queue);
+        const promise = new Promise<T>((resolve, reject) => {
+            if (block) state.callers.push({ resolve, reject });
+            else resolve(undefined as any);
+        })
+        if (block && state.queue.length < queue) {
+            state.queue[{ LIFO: 'unshift', FIFO: 'push' }[order] as any](block);
         }
+        this.removeElements(state.calls, ...state.calls.filter(time => (now - time) > interval));
         while (state.busy < users && state.queue.length) {
+            const task = state.queue.shift()!;
+            const delay = state.calls.length >= users ? (state.calls[0] + interval) - now : 0;
             state.busy++;
-            state.queue.shift()()
-                .catch(console.error)
-                .then(() => state.busy--, this.throttle({ resource, users, queue }));
+            state.calls.push(now + delay);
+            Util.pause(delay)
+                .then(() => task())
+                .then((success: T) => ({ success }))
+                .catch((error: Error) => ({ error }))
+                .then(async (result: { success?: T; error?: Error; }) => {
+                    state.busy--;
+                    for (const caller of state.callers.splice(0)) {
+                        if ('success' in result) caller.resolve(result.success!);
+                        else caller.reject(result.error!);
+                    }
+                    this.throttle({ resource, users, queue, interval });
+                });
         }
+        return promise;
     }
 
     static async waitUntil<T = any>(pred: () => T | Promise<T>, { retries = Infinity, pause = 25, timeElapsed = Infinity } = {}): Promise<T> {
@@ -391,6 +432,7 @@ export class Util {
         return obj;
     }
 
+    /** Removes elements from an array in-place */
     static removeElements<T>(arr: T[], ...elements: T[]): T[] {
         const removed = [];
         for (const element of elements) {
@@ -600,13 +642,68 @@ export class Util {
         });
     }
 
-    static get CLI() {
-        return class {
-            static switches = process.argv.slice(1).map(a => (/^--(.+)/.exec(a) || [])[1]).filter(Boolean) as string[];
-            static params = (this.switches.map(s => /^(.+?)=(.+)$/.exec(s)?.slice(1)).filter(Boolean) as string[][]).reduce((p, [k, v]) => Object.assign(p, { [k]: v }), {}) as any;
-        }
+    static CLI = class CLI {
+        static get switches() { return process.argv.slice(1).map(a => (/^--(.+)/.exec(a) || [])[1]).filter(Boolean) as string[]; }
+        static get params() { return (this.switches.map(s => /^(.+?)=(.+)$/.exec(s)?.slice(1)).filter(Boolean) as string[][]).reduce((p, [k, v]) => Object.assign(p, { [k]: v }), {}) as any; }
+    };
+
+    static dateTimeInfo(timeZone: string, date = new Date().getTime()) {
+        const locale = 'en-SE'; // YYYY-MM-DD, HH:MM:SS
+        const datetime = new Date(date).toLocaleString(locale, { timeZone }).split(', ')
+        const yyyymmdd = datetime[0];
+        const time = datetime[1];
+        const hhmm = time.replace(/:(\d+):\d+$/, (_, min) => `:${min >= 30 ? '30' : '00'}`);
+        return { yyyymmdd: yyyymmdd, time, hhmm };
     }
 
+    static score<T>(arr: T[], weights: Partial<Record<keyof T, number>>) {
+        const minValues = {} as Record<keyof T, number>;
+        const maxValues = {} as Record<keyof T, number>;
+        for (const key in weights) {
+            minValues[key] = Math.min(...arr.map(item => item[key] as number));
+            maxValues[key] = Math.max(...arr.map(item => item[key] as number));
+        }
+
+        const calculateScore = (item: T): number => {
+            return this.keys(weights).reduce((total, key) => {
+                const weight = weights[key]!;
+                const min = minValues[key];
+                const max = maxValues[key];
+                const normalized = (item[key] as number - min) / (max - min || 1); // Avoid division by zero.
+                return total + weight * normalized;
+            }, 0);
+        };
+
+        const scored = arr
+            .map(item => ({ item, score: calculateScore(item) }))
+            .sort((a, b) => b.score - a.score);
+
+        return {
+            highest: scored[0]?.item,
+            lowest: scored[scored.length - 1]?.item,
+            scored,
+        };
+    }
+
+    // static hash(data: any): string {
+    //     if (typeof data !== 'string') data = this.toJSON(data);
+    //     return require('crypto').createHash('sha256').update(data).digest('hex');
+    // }
+
+    static GracefulExit(pred: () => any) {
+        let handled = false;
+        for (const e of ['SIGTERM', 'SIGINT', 'SIGUSR1', 'SIGUSR2', 'uncaughtException', 'exit'])
+            process.on(e as any, (code: any) => {
+                if (!handled) {
+                    handled = true;
+                    console.log('Terminating gracefully...', e, code);
+                    if (code instanceof Error) console.error(code), console.error(code.stack);
+                    Promise.resolve(1).then(pred).finally(() => { console.log('/Terminated'), process.exit(e == 'exit' ? code : 0); });
+                }
+                if (e == 'exit')
+                    process.exit(code);
+            });
+    }
 }
 
 export interface Rectangle {
