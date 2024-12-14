@@ -64,8 +64,12 @@ export class Util {
             .reduce((picked, [k, v]) => ({ ...picked, [k]: v }), <Partial<T>>{});
     }
 
+    static toBase64(binary: Object): string;
+    static toBase64(binary: string): string;
+    static toBase64(binary: string | Object) { return Buffer.from(typeof binary === 'string' ? binary : JSON.stringify(binary), 'binary').toString('base64') }
+    static fromBase64(base64: string) { return Buffer.from(base64, 'base64').toString('binary') }
+    
     static btoa(obj: any): string { return Buffer.from(obj).toString('base64'); }
-
     static atob(b64Encoded: string): any { return Buffer.from(b64Encoded, 'base64').toString(); }
 
     static deleteProps(obj: any, props: any[]) {
@@ -339,32 +343,34 @@ export class Util {
             debounced.set(resource, state);
             return state;
         })();
+
         const canRun = state.next.time <= time;
         const promise = new Promise<T>((resolve, reject) => {
             if (block) state.callers.push({ resolve, reject });
             else resolve(undefined as any);
-        })
+        });
+
         state.next.time = time + delay;
         if (!canRun) {
             clearTimeout(state.timeout);
             state.timeout = setTimeout(() => this.debounce({ delay, resource }), delay);
         } else if (state.busy) {
-            state.next.block = block;
+            if (block) state.next.block = block;
         } else if (block ||= state.next.block) {
             state.next.block = undefined;
             state.busy = true;
             block()
                 .then((success: T) => ({ success }))
                 .catch((error: Error) => ({ error }))
-                .then(async (result: { success?: T; error?: Error; }) => {
+                .then((result: { success?: T; error?: Error; }) => {
                     state.busy = false;
                     state.next.time = Date.now() + delay;
                     for (const caller of state.callers.splice(0)) {
                         if ('success' in result) caller.resolve(result.success!);
                         else caller.reject(result.error!);
                     }
-                    this.debounce({ delay, resource }); // So the timeout can be restarted, postponing any debounced-block that was added during execution time of this block
-                })
+                    this.debounce({ delay, resource });
+                });
         }
         return promise;
     }
@@ -531,11 +537,6 @@ export class Util {
         return arr;
     }
 
-    static toBase64(binary: Object): string;
-    static toBase64(binary: string): string;
-    static toBase64(binary: string | Object) { return Buffer.from(typeof binary === 'string' ? binary : JSON.stringify(binary), 'binary').toString('base64') }
-    static fromBase64(base64: string) { return Buffer.from(base64, 'base64').toString('binary') }
-
     static clearAllProperties(obj: any, incudeSymbols = true) {
         for (const symbol of Object.getOwnPropertySymbols(obj)) delete obj[symbol];
         for (const name of Object.getOwnPropertyNames(obj)) delete obj[name];
@@ -685,25 +686,39 @@ export class Util {
         };
     }
 
-    // static hash(data: any): string {
-    //     if (typeof data !== 'string') data = this.toJSON(data);
-    //     return require('crypto').createHash('sha256').update(data).digest('hex');
-    // }
-
+    private static handlers: any[] = [];
     static GracefulExit(pred: () => any) {
-        let handled = false;
-        for (const e of ['SIGTERM', 'SIGINT', 'SIGUSR1', 'SIGUSR2', 'uncaughtException', 'exit'])
-            process.on(e as any, (code: any) => {
-                if (!handled) {
-                    handled = true;
-                    console.log('Terminating gracefully...', e, code);
-                    if (code instanceof Error) console.error(code), console.error(code.stack);
-                    Promise.resolve(1).then(pred).finally(() => { console.log('/Terminated'), process.exit(e == 'exit' ? code : 0); });
-                }
-                if (e == 'exit')
-                    process.exit(code);
-            });
+        if (this.handlers.push(pred) == 1) {
+            let handled = false;
+            for (const e of ['SIGTERM', 'SIGINT', 'SIGUSR1', 'SIGUSR2', 'uncaughtException', 'exit'])
+                process.on(e as any, async (code: any) => {
+                    if (!handled) {
+                        handled = true;
+                        console.log('Terminating gracefully...', e, code);
+                        if (code instanceof Error) console.error(code), console.error(code.stack);
+                        await Promise.all(this.handlers.map(handler => Promise.resolve(1).then(handler).catch(() => null)));
+                        console.log('/Terminated');
+                        process.exit(e == 'exit' ? code : 0);
+                    }
+                });
+        }
     }
+
+    static base64ToArrayBuffer(base64: string) {
+        const binary_string = this.atob(base64);
+        const len = binary_string.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++)  bytes[i] = binary_string.charCodeAt(i);
+        return bytes.buffer;
+    }
+    
+    static arrayBufferToBase64(buffer: ArrayBuffer) {
+        let binary = "";
+        const bytes = new Uint8Array(buffer);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
+        return this.btoa(binary);
+    }    
 }
 
 export interface Rectangle {
