@@ -53,7 +53,7 @@ export class Util {
         return arr.map(i => keys.length > 1 ? this.pick(i, keys) : i[keys[0]]);
     }
 
-    static pick<T, K extends keyof T>(obj: T, props: K[]): Record<K, T[K]> {
+    static pick<T>(obj: T, props: Array<keyof T>): Partial<T> {
         return props.reduce((picked, prop) => ({ ...picked, [prop]: obj[prop] }), <any>{});
     }
 
@@ -64,11 +64,22 @@ export class Util {
             .reduce((picked, [k, v]) => ({ ...picked, [k]: v }), <Partial<T>>{});
     }
 
-    static toBase64(binary: Object): string;
-    static toBase64(binary: string): string;
-    static toBase64(binary: string | Object) { return Buffer.from(typeof binary === 'string' ? binary : JSON.stringify(binary), 'binary').toString('base64') }
-    static fromBase64(base64: string) { return Buffer.from(base64, 'base64').toString('binary') }
-    
+    static toBase64(binary: Object, urlsafe?: boolean): string;
+    static toBase64(binary: string, urlsafe?: boolean): string;
+    static toBase64(binary: string | Object, urlsafe?: boolean) {
+        const base64 = Buffer
+            .from(typeof binary === 'string' ? binary : JSON.stringify(binary), 'binary')
+            .toString('base64');
+        return urlsafe
+            ? base64.replace(/\+/g, '-').replace(/\//g, '_')
+            : base64;
+    }
+
+    static fromBase64(base64: string, urlsafe?: boolean) {
+        if (urlsafe) base64 = base64.replace(/-/g, '+').replace(/_/g, '/');
+        return Buffer.from(base64, 'base64').toString('binary')
+    }
+
     static btoa(obj: any): string { return Buffer.from(obj).toString('base64'); }
     static atob(b64Encoded: string): any { return Buffer.from(b64Encoded, 'base64').toString(); }
 
@@ -232,10 +243,10 @@ export class Util {
             : response.result
     }
 
-    static matches<T>(el: T, criteria: any): boolean {
+    static matches<T>(el: T, criteria: Partial<T>): boolean {
         return Object
             .keys(criteria)
-            .every(criteriaKey => (el as any)[criteriaKey] === criteria[criteriaKey]);
+            .every((criteriaKey: any) => (el as any)[criteriaKey] === (criteria as any)[criteriaKey]);
     }
 
     static where<T>(arr: T[], criteria: Partial<T>): T[] {
@@ -282,7 +293,7 @@ export class Util {
         return { result, ms };
     }
 
-    static findWhere<T>(arr: T[], criteria: any): T | undefined {
+    static findWhere<T>(arr: T[], criteria: Partial<T>): T | undefined {
         return arr.find(el => this.matches(el, criteria));
     }
 
@@ -644,8 +655,8 @@ export class Util {
     }
 
     static CLI = class CLI {
-        static get switches() { return process.argv.slice(1).map(a => (/^--(.+)/.exec(a) || [])[1]).filter(Boolean) as string[]; }
-        static get params() { return (this.switches.map(s => /^(.+?)=(.+)$/.exec(s)?.slice(1)).filter(Boolean) as string[][]).reduce((p, [k, v]) => Object.assign(p, { [k]: v }), {}) as any; }
+        static get switches() { return process.argv.slice(1).map(a => (/^--([^=]+)$/.exec(a) || [])[1]).filter(Boolean) as string[]; }
+        static get params() { return (process.argv.slice(1).map(s => /^--(.+?)=(.+)$/.exec(s)?.slice(1)).filter(Boolean) as string[][]).reduce((p, [k, v]) => Object.assign(p, { [k]: v }), {}) as any; }
     };
 
     static dateTimeInfo(timeZone: string, date = new Date().getTime()) {
@@ -686,22 +697,11 @@ export class Util {
         };
     }
 
-    private static handlers: any[] = [];
-    static GracefulExit(pred: () => any) {
-        if (this.handlers.push(pred) == 1) {
-            let handled = false;
-            for (const e of ['SIGTERM', 'SIGINT', 'SIGUSR1', 'SIGUSR2', 'uncaughtException', 'exit'])
-                process.on(e as any, async (code: any) => {
-                    if (!handled) {
-                        handled = true;
-                        console.log('Terminating gracefully...', e, code);
-                        if (code instanceof Error) console.error(code), console.error(code.stack);
-                        await Promise.all(this.handlers.map(handler => Promise.resolve(1).then(handler).catch(() => null)));
-                        console.log('/Terminated');
-                        process.exit(e == 'exit' ? code : 0);
-                    }
-                });
-        }
+    static GracefulExit(pred: () => any, { off = false } = {}) {
+        off
+            ? GracefulExit.removeListener(pred)
+            : GracefulExit.addListener(pred)
+
     }
 
     static base64ToArrayBuffer(base64: string) {
@@ -711,14 +711,27 @@ export class Util {
         for (let i = 0; i < len; i++)  bytes[i] = binary_string.charCodeAt(i);
         return bytes.buffer;
     }
-    
+
     static arrayBufferToBase64(buffer: ArrayBuffer) {
         let binary = "";
         const bytes = new Uint8Array(buffer);
         const len = bytes.byteLength;
         for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
         return this.btoa(binary);
-    }    
+    }
+
+    static isUniversallyAcceptedFilename(filename: string) {
+        return /^[^\\\/:*?"<>|0-9\s]+[^\\\/:*?"<>|\.]$/.test(filename)
+            && !/^(CON|AUX|PRN|NUL|COM\d|LPT\d)$/i.test(filename)
+            && !/\s+$/.test(filename)
+    }
+
+    static UniverallyAcceptedFilename(filename: string) {
+        return this.isUniversallyAcceptedFilename(filename)
+            ? filename
+            : Util.toBase64(filename, true);
+    }
+
 }
 
 export interface Rectangle {
@@ -731,4 +744,35 @@ export interface Rectangle {
 export interface Point {
     x: number;
     y: number;
+}
+
+export class GracefulExit {
+    static events = ['SIGTERM', 'SIGINT', 'SIGUSR1', 'SIGUSR2', 'uncaughtException', 'exit'];
+    static listeners: Array<[Function, string | undefined]> = [];
+    static handled = false;
+    static handlers: Record<string, (code: any) => Promise<void>> = this.events.reduce((handlers, event) => Object.assign(handlers, {
+        [event]: async (code: any) => {
+            if (!this.handled) {
+                this.handled = true;
+                console.log('Terminating gracefully...', event, code);
+                if (code instanceof Error) console.error(code), console.error(code.stack);
+                await Promise.all(this.listeners.map(async ([handler]) => {
+                    try { await handler() } catch (e) { }
+                }));
+                console.log('/Terminated');
+                process.exit(event == 'exit' ? code : 0);
+            }
+        }
+    }), {});
+    static removeListener(pred: () => any | string) {
+        Util.removeElements(this.listeners, ...this.listeners.filter(listener => listener.includes(pred)));
+        if (this.listeners.length == 0)
+            for (const event of this.events)
+                process.off(event, this.handlers[event]);
+    }
+    static addListener(pred: () => any, description?: string) {
+        if (this.listeners.push([pred, description]) == 1)
+            for (const event of this.events)
+                process.on(event as any, this.handlers[event]);
+    }
 }
