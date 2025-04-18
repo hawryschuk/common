@@ -6,7 +6,7 @@
     "*.spec.js"
   ],
   "compilerOptions": {
-    "esModuleInterop": true,                             /* Emit additional JavaScript to ease support for importing CommonJS modules. This enables 'allowSyntheticDefaultImports' for type compatibility. */
+    "esModuleInterop": true, /* Emit additional JavaScript to ease support for importing CommonJS modules. This enables 'allowSyntheticDefaultImports' for type compatibility. */
     "baseUrl": "./",
     "outDir": "./dist",
     "sourceMap": true,
@@ -17,16 +17,16 @@
     "moduleResolution": "node",
     "importHelpers": true,
     "target": "es2016",
-    "typeRoots": [
-      "node_modules/@types"
-    ],
+    // "typeRoots": [
+    //   "node_modules/@types"
+    // ],
     "types": [
       "node",
       "mocha",
       "chai"
     ],
-    "lib": [
-      "es6"
-    ]
+    // "lib": [
+    //   "es6"
+    // ]
   }
 }

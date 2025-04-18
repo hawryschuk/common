@@ -1,12 +1,37 @@
 import equal from 'fast-deep-equal';
+import { Point } from './Point';
+import { Rectangle } from './Rectangle';
 // const deepEqual = require('deep-equal');
 
 export class Util {
     static defaults = { timeout: 300000, pause: 1000 };
     static debug = false;
 
-    static range({ min = 1, max = 10 }) {
+    static range(max: number): Array<number>;
+    static range(min: number, max: number): Array<number>;
+    static range(options: { max: number, min?: number }): Array<number>;
+    static range(...options: any[]) {
+        if (options.length === 0) throw new Error;
+        const [min = 1, max] = (() => {
+            if (options.length == 2)
+                return options;
+            else if (options.length == 1) {
+                return typeof options[0] == 'number'
+                    ? [1, options[0]]
+                    : [options[0].min, options[0].max]
+            }
+            else
+                throw new Error;
+        })();
         return new Array(max - min + 1).fill(0).map((v, i) => i + min)
+    }
+
+    static range2({ min = 1, max = 10, step = 1, fixed = undefined as number | undefined }) {
+        const result: number[] = [];
+        for (let i = min; i <= max; i += step) {
+            result.push(fixed! >= 0 ? parseFloat(i.toFixed(fixed)) : i);
+        }
+        return result;
     }
 
     static random({ min = 0, max = 1 }) {
@@ -249,6 +274,12 @@ export class Util {
             .every((criteriaKey: any) => (el as any)[criteriaKey] === (criteria as any)[criteriaKey]);
     }
 
+    static notMatches<T>(el: T, criteria: Partial<T>): string[] {
+        return Object
+            .keys(criteria)
+            .filter((criteriaKey: any) => (el as any)[criteriaKey] !== (criteria as any)[criteriaKey]);
+    }
+
     static where<T>(arr: T[], criteria: Partial<T>): T[] {
         return arr.filter(el => this.matches(el, criteria));
     }
@@ -340,10 +371,9 @@ export class Util {
         }
     }
 
-    /** Will run a block after a delay from now and the last invocation 
+    /** Will run a block after a delay from now and the last invocation
      * - Replaces last queued block
-     * - Executes blocks LIFO
-    */
+     * - Executes blocks LIFO */
     static debounce<T>({ block, delay, resource }: { block?: () => Promise<T>; delay: number; resource?: any; }) {
         resource ||= block;
         type STATE = { timeout?: NodeJS.Timeout; busy: boolean; next: { block?: () => Promise<T>, time: number; }; callers: { resolve: (value: T) => void; reject: (reason?: any) => void; }[]; };
@@ -362,12 +392,13 @@ export class Util {
         });
 
         state.next.time = time + delay;
-        if (!canRun) {
+
+        if (block) state.next.block = block;
+
+        if (block || !canRun) {
             clearTimeout(state.timeout);
             state.timeout = setTimeout(() => this.debounce({ delay, resource }), delay);
-        } else if (state.busy) {
-            if (block) state.next.block = block;
-        } else if (block ||= state.next.block) {
+        } else if (!state.busy && (block ||= state.next.block)) {
             state.next.block = undefined;
             state.busy = true;
             block()
@@ -430,14 +461,18 @@ export class Util {
         return promise;
     }
 
-    static async waitUntil<T = any>(pred: () => T | Promise<T>, { retries = Infinity, pause = 25, timeElapsed = Infinity } = {}): Promise<T> {
+    static async waitUntil<T = any>(pred: (o: { elapsed: number; attempt: number; }) => T | Promise<T>, { retries = Infinity, pause = 25, timeElapsed = Infinity } = {}): Promise<T> {
         const startTime = new Date().getTime();
+        let attempt = 0;
         let result!: T;
         while (!result) {
-            if (!(result = await pred())) {
+            if (!(result = await pred({ elapsed: new Date().getTime() - startTime, attempt: ++attempt }))) {
                 retries--;
                 if (retries <= 0) { throw new Error(`Util.waitUntil: timeout-retries`); }
-                if ((new Date().getTime() - startTime) > timeElapsed) throw new Error('Util.waitUntil: timeout-timeElapsed')
+                if ((new Date().getTime() - startTime) > timeElapsed) {
+                    Error.stackTraceLimit = 100; // or a higher value, e.g., Infinity for unlimited
+                    throw new Error('Util.waitUntil: timeout-timeElapsed')
+                }
                 await this.pause(pause);
             }
         }
@@ -697,13 +732,6 @@ export class Util {
         };
     }
 
-    static GracefulExit(pred: () => any, { off = false } = {}) {
-        off
-            ? GracefulExit.removeListener(pred)
-            : GracefulExit.addListener(pred)
-
-    }
-
     static base64ToArrayBuffer(base64: string) {
         const binary_string = this.atob(base64);
         const len = binary_string.length;
@@ -732,47 +760,13 @@ export class Util {
             : Util.toBase64(filename, true);
     }
 
-}
-
-export interface Rectangle {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-}
-
-export interface Point {
-    x: number;
-    y: number;
-}
-
-export class GracefulExit {
-    static events = ['SIGTERM', 'SIGINT', 'SIGUSR1', 'SIGUSR2', 'uncaughtException', 'exit'];
-    static listeners: Array<[Function, string | undefined]> = [];
-    static handled = false;
-    static handlers: Record<string, (code: any) => Promise<void>> = this.events.reduce((handlers, event) => Object.assign(handlers, {
-        [event]: async (code: any) => {
-            if (!this.handled) {
-                this.handled = true;
-                console.log('Terminating gracefully...', event, code);
-                if (code instanceof Error) console.error(code), console.error(code.stack);
-                await Promise.all(this.listeners.map(async ([handler]) => {
-                    try { await handler() } catch (e) { }
-                }));
-                console.log('/Terminated');
-                process.exit(event == 'exit' ? code : 0);
-            }
-        }
-    }), {});
-    static removeListener(pred: () => any | string) {
-        Util.removeElements(this.listeners, ...this.listeners.filter(listener => listener.includes(pred)));
-        if (this.listeners.length == 0)
-            for (const event of this.events)
-                process.off(event, this.handlers[event]);
+    static async streamToString(stream: ReadableStream) {
+        const reader = stream.getReader();
+        let result = '', done, value;
+        while ({ done, value } = await reader.read(), !done)
+            result += new TextDecoder("utf-8").decode(value);
+        return result;
     }
-    static addListener(pred: () => any, description?: string) {
-        if (this.listeners.push([pred, description]) == 1)
-            for (const event of this.events)
-                process.on(event as any, this.handlers[event]);
-    }
+
 }
+
