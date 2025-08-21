@@ -24,7 +24,7 @@ describe('Util', () => {
     it('deletes props from an object', () => {
         expect(Util.deleteProps({ a: 1, b: 2, c: 3 }, ['b'])).to.deep.equal({ a: 1, c: 3 });
     });
-    it.only('moves an item in array : up/down a specified amount', () => {
+    it('moves an item in array : up/down a specified amount', () => {
         expect(Util.move([5, 6, 7, 8], 6, -1)).to.deep.equal([6, 5, 7, 8]);
         expect(Util.move([5, 6, 7, 8], 7, -2)).to.deep.equal([7, 5, 6, 8]);
         expect(Util.move([5, 6, 7, 8], 6, 1)).to.deep.equal([5, 7, 6, 8]);
