@@ -396,7 +396,7 @@ export class Util {
         if (block) state.next.block = block;
 
         if (block || !canRun) {
-            clearTimeout(state.timeout);
+            if (state.timeout) clearTimeout(state.timeout);
             state.timeout = setTimeout(() => this.debounce({ delay, resource }), delay);
         } else if (!state.busy && (block ||= state.next.block)) {
             state.next.block = undefined;
@@ -436,7 +436,7 @@ export class Util {
             if (block) state.callers.push({ resolve, reject });
             else resolve(undefined as any);
         })
-        if (block && state.queue.length < queue) {
+        if (block && (state.queue.length + state.busy) < queue) {
             state.queue[{ LIFO: 'unshift', FIFO: 'push' }[order] as any](block);
         }
         this.removeElements(state.calls, ...state.calls.filter(time => (now - time) > interval));
@@ -450,6 +450,7 @@ export class Util {
                 .then((success: T) => ({ success }))
                 .catch((error: Error) => ({ error }))
                 .then(async (result: { success?: T; error?: Error; }) => {
+                    await Util.pause(interval);
                     state.busy--;
                     for (const caller of state.callers.splice(0)) {
                         if ('success' in result) caller.resolve(result.success!);

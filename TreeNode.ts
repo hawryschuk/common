@@ -1,7 +1,7 @@
 const childrenSymbol = Symbol.for('children')
 
 /** A tree contains children and its nodes may be iterated */
-export class TreeNode<T>{
+export class TreeNode<T> {
     static construct<T>(data: T[], parent?: TreeNode<T>): TreeNode<T> {
         const node = new this(data[0], parent);
         return Object.assign(node, {
@@ -13,8 +13,8 @@ export class TreeNode<T>{
         });
     }
 
-    get parent() { return this[Symbol.for('parent')] }
-    set parent(parent: TreeNode<T>) { this[Symbol.for('parent')] = parent; }
+    get parent() { return (this as any)[Symbol.for('parent')] }
+    set parent(parent: TreeNode<T>) { (this as any)[Symbol.for('parent')] = parent; }
 
     constructor(public data: T, parent?: TreeNode<T>) {
         this.parent = parent;

@@ -1,8 +1,8 @@
 import { BinaryTreeNode } from './BinaryTree';
 
-export class BinaryMinHeap<T> extends BinaryTreeNode<T>{
-    left: BinaryMinHeap<T>;
-    right: BinaryMinHeap<T>;
+export class BinaryMinHeap<T> extends BinaryTreeNode<T> {
+    left?: BinaryMinHeap<T>;
+    right?: BinaryMinHeap<T>;
 
     /** Convert an array of items into a binary-tree -- root being at the midpoint */
     static construct<T>(items: T[], parent?: BinaryMinHeap<T>): BinaryMinHeap<T> {
@@ -12,8 +12,8 @@ export class BinaryMinHeap<T> extends BinaryTreeNode<T>{
         return Object.assign(
             node,
             {
-                left: left.length && this.construct(left, node),
-                right: right.length && this.construct(right, node)
+                left: left.length ? this.construct(left, node) : undefined,
+                right: right.length ? this.construct(right, node) : undefined
             }
         );
     }
@@ -28,8 +28,8 @@ export class BinaryMinHeap<T> extends BinaryTreeNode<T>{
                 node.data = lower.data;
                 lower.data = null;
                 if (!lower.children.length) {
-                    const side = ['left', 'right'].find(side => node[side] === lower);
-                    node[side] = null;
+                    const side = (['left', 'right'] as Array<keyof BinaryMinHeap<any>>).find(side => node[side] === lower)!;
+                    delete node[side];// = undefined;
                 }
             }
             node = lower;

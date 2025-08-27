@@ -1,7 +1,7 @@
 import { TreeNode } from './TreeNode';
 
 /** A Binary Tree is a data-structure of nodes where each node may have up to two child-nodes [left and right] */
-export class BinaryTreeNode<T> extends TreeNode<T>{
+export class BinaryTreeNode<T> extends TreeNode<T> {
     /** Convert an array of items into a binary-tree -- root being at the midpoint */
     static construct<T>(items: T[], parent?: BinaryTreeNode<T>): BinaryTreeNode<T> {
         if (items.length) {
@@ -16,12 +16,12 @@ export class BinaryTreeNode<T> extends TreeNode<T>{
         }
     }
 
-    constructor(public data: T, parent: BinaryTreeNode<T>) {
+    constructor(public data: T, parent?: BinaryTreeNode<T>) {
         super(data, parent);
     }
 
-    left: BinaryTreeNode<T>;
-    right: BinaryTreeNode<T>;
+    left?: BinaryTreeNode<T>;
+    right?: BinaryTreeNode<T>;
 
     /** Override children */
     get children() {
@@ -35,10 +35,13 @@ export class BinaryTreeNode<T> extends TreeNode<T>{
 
     /** Inserts data into a free position (left, right), keep going down the tree */
     insert(data: T): BinaryTreeNode<T> {
+        let newNode: BinaryTreeNode<T>;
         for (const node of this.BFS()) {
-            const freeSide = ['left', 'right'].find(side => !node[side]);
-            if (freeSide) return node[freeSide] = new BinaryTreeNode(data, node as any);
+            let _node = node as BinaryTreeNode<T>;
+            const freeSide = (['left', 'right'] as Array<keyof BinaryTreeNode<T>>).find(side => !_node[side]);
+            if (freeSide) newNode ||= ((_node as any)[freeSide] = new BinaryTreeNode(data, _node as any));
         }
+        return newNode!;
     }
 }
 

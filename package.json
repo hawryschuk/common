@@ -2,12 +2,12 @@
   "name": "@hawryschuk/common",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "index.ts",
   "files": [
-    "index.js"
+    "index.ts"
   ],
   "bin": {
-    "hawryschuk": "./cli.js"
+    "hawryschuk": "./cli.ts"
   },
   "scripts": {
     "start": "nodemon --ext ts --ignore ./dist --exec npm run build",
