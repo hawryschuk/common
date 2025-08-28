@@ -286,6 +286,8 @@ export class Util {
 
     static async pause(ms: number) { await new Promise(resolve => setTimeout(resolve, ms)); }
 
+    static randomElement<T>(arr: T[]): T { return arr[this.random({ min: 0, max: arr.length - 1 })]; }
+
     static shuffle<T = any>(array: T[]): T[] {
         for (var i = array.length - 1; i > 0; i--) {
             var j = Math.floor(Math.random() * (i + 1));
