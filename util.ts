@@ -288,6 +288,7 @@ export class Util {
 
     static randomElement<T>(arr: T[]): T { return arr[this.random({ min: 0, max: arr.length - 1 })]; }
 
+    /** Shuffles an array in-place */
     static shuffle<T = any>(array: T[]): T[] {
         for (var i = array.length - 1; i > 0; i--) {
             var j = Math.floor(Math.random() * (i + 1));
@@ -770,6 +771,16 @@ export class Util {
             result += new TextDecoder("utf-8").decode(value);
         return result;
     }
+
+    static toString(data: any): string {
+        if (typeof data === 'string')
+            return data;
+        else {
+            return data?.toString instanceof Function && data.toString !== Object.prototype.toString
+                ? data.toString()
+                : JSON.stringify(data)
+        }
+    };
 
 }
 
