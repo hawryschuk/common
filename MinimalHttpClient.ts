@@ -1,8 +1,10 @@
-
-export type MinimalHttpClient = (requestParams: {
-    method?: 'post' | 'get' | 'delete' | 'put';
-    url: string;
+export type HttpClientRequestParams = {
+    method?: 'get' | 'post' | 'put' | 'delete';
+    url?: string;
+    url2?: string;
     body?: any;
     responseType?: 'arraybuffer' | 'blob' | 'text' | 'json';
-    headers?: { [header: string]: string | string[]; };
-}) => Promise<any>;
+    headers?: Record<string, string | string[]>;
+};
+
+export type MinimalHttpClient = (requestParams: HttpClientRequestParams) => Promise<any>;
