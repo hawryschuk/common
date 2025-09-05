@@ -1,5 +1,5 @@
 export type HttpClientRequestParams = {
-    method?: 'get' | 'post' | 'put' | 'delete';
+    method?: 'get' | 'post' | 'put' | 'delete' | 'head';
     url?: string;
     url2?: string;
     body?: any;
