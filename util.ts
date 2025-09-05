@@ -89,11 +89,9 @@ export class Util {
             .reduce((picked, [k, v]) => ({ ...picked, [k]: v }), <Partial<T>>{});
     }
 
-    static toBase64(binary: Object, urlsafe?: boolean): string;
-    static toBase64(binary: string, urlsafe?: boolean): string;
-    static toBase64(binary: string | Object, urlsafe?: boolean) {
+    static toBase64(binary: any, urlsafe?: boolean) {
         const base64 = Buffer
-            .from(typeof binary === 'string' ? binary : JSON.stringify(binary), 'binary')
+            .from(this.toString(binary))
             .toString('base64');
         return urlsafe
             ? base64.replace(/\+/g, '-').replace(/\//g, '_')
@@ -575,7 +573,7 @@ export class Util {
 
     static async ArrayFromAsyncGenerator<T = any>(items: AsyncGenerator<T>) {
         const arr: T[] = [];
-        for await (const item of items) arr.push(item);
+        for await (const item of await items) arr.push(item);
         return arr;
     }
 
@@ -778,7 +776,7 @@ export class Util {
         else {
             return data?.toString instanceof Function && data.toString !== Object.prototype.toString
                 ? data.toString()
-                : JSON.stringify(data)
+                : Util.toJSON(data)
         }
     };
 
