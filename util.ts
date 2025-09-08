@@ -1,15 +1,12 @@
 import equal from 'fast-deep-equal';
 import { Point } from './Point';
 import { Rectangle } from './Rectangle';
-// const deepEqual = require('deep-equal');
+import { Base64 } from './Base64';
 
 export class Util {
-    static defaults = { timeout: 300000, pause: 1000 };
-    static debug = false;
-
     static range(max: number): Array<number>;
     static range(min: number, max: number): Array<number>;
-    static range(options: { max: number, min?: number }): Array<number>;
+    static range(options: { max: number, min?: number; step?: number; fixed?: number }): Array<number>;
     static range(...options: any[]) {
         if (options.length === 0) throw new Error;
         const [min = 1, max] = (() => {
@@ -23,92 +20,42 @@ export class Util {
             else
                 throw new Error;
         })();
+
+        if (options.length === 1 && 'step' in options) {
+            const { step = 1, fixed } = options[0];
+            const result: number[] = [];
+            for (let i = min; i <= max; i += step) {
+                result.push(fixed! >= 0 ? parseFloat(i.toFixed(fixed)) : i);
+            }
+        }
         return new Array(max - min + 1).fill(0).map((v, i) => i + min)
     }
 
-    static range2({ min = 1, max = 10, step = 1, fixed = undefined as number | undefined }) {
-        const result: number[] = [];
-        for (let i = min; i <= max; i += step) {
-            result.push(fixed! >= 0 ? parseFloat(i.toFixed(fixed)) : i);
-        }
-        return result;
-    }
-
-    static random({ min = 0, max = 1 }) {
-        return min + Math.floor(Math.random() * (max - min + 1))
-    }
-
+    static Base64 = Base64;
+    static random({ min = 0, max = 1 }) { return min + Math.floor(Math.random() * (max - min + 1)) }
     static round(value: number, step = 0.5) { return Math.round(value / step) * step }
-
     static warn(stuff: any) { console.warn(JSON.stringify(stuff, null, 2)); }
-
-    static log(stuff: any, { always = false } = {}) { (always || this.debug) && console.log(JSON.stringify(stuff, null, 2)); }
-
     static get UUID() { return new Array(32).fill(0).map(i => Math.floor(Math.random() * 0xF).toString(0xF)).join('') }
-
     static unique<T = any>(arr: T[]): T[] { return Array.from(new Set(arr)); }
-
-    static unique2<T = any>(arr: T[]): T[] {
-        return arr.reduce((unique: T[], item: T) => {
-            if (!unique.includes(item)) unique.push(item);
-            return unique;
-        }, [] as T[]);
-    }
-
-    static pushUnique<T>(arr: T[], el: T) {
-        if (arr.includes(el)) return false;
-        arr.push(el);
-        return true
-    }
-
+    static pushUnique<T>(arr: T[], el: T) { if (arr.includes(el)) { return false; } else { arr.push(el); return true; } }
     static falsy(x: any) { return !x; }
-
     static truthy(x: any) { return !!x; }
-
-    static between(val: number, from: number, to: number) {
-        return val >= from && val <= to;
-    }
+    static between(val: number, from: number, to: number) { return val >= from && val <= to; }
+    static deleteProps(obj: any, props: any[]) { for (let prop of props) delete obj[prop]; return obj; }
 
     /** @example pluck( [{name:'x'},{name:'y'}],'name') will return ['x','y']
      *  @example pluck( [{name:'x'},{name:'y'}],'name','age') will return [{name:'x',age:undefined},{name:'y',age:undefined}]
      * **/
     static pluck<T>(arr: T[], key: keyof T): T[keyof T][];
     static pluck<T = any>(arr: any[], ...keys: (keyof T)[]): Partial<T>[];
-    static pluck<T = any>(arr: any[], ...keys: (keyof T)[]): Partial<T>[] {
-        return arr.map(i => keys.length > 1 ? this.pick(i, keys) : i[keys[0]]);
-    }
+    static pluck<T = any>(arr: any[], ...keys: (keyof T)[]): Partial<T>[] { return arr.map(i => keys.length > 1 ? this.pick(i, keys) : i[keys[0]]); }
 
-    static pick<T>(obj: T, props: Array<keyof T>): Partial<T> {
-        return props.reduce((picked, prop) => ({ ...picked, [prop]: obj[prop] }), <any>{});
-    }
-
+    static pick<T>(obj: T, props: Array<keyof T>): Partial<T> { return props.reduce((picked, prop) => ({ ...picked, [prop]: obj[prop] }), <any>{}); }
     static unpick<T>(obj: T, props: (keyof T)[]): Partial<T> {
         return Object
             .entries(obj as any)
             .filter(([k]) => !props.includes(k as keyof T))
             .reduce((picked, [k, v]) => ({ ...picked, [k]: v }), <Partial<T>>{});
-    }
-
-    static toBase64(binary: any, urlsafe?: boolean) {
-        const base64 = Buffer
-            .from(this.toString(binary))
-            .toString('base64');
-        return urlsafe
-            ? base64.replace(/\+/g, '-').replace(/\//g, '_')
-            : base64;
-    }
-
-    static fromBase64(base64: string, urlsafe?: boolean) {
-        if (urlsafe) base64 = base64.replace(/-/g, '+').replace(/_/g, '/');
-        return Buffer.from(base64, 'base64').toString('binary')
-    }
-
-    static btoa(obj: any): string { return Buffer.from(obj).toString('base64'); }
-    static atob(b64Encoded: string): any { return Buffer.from(b64Encoded, 'base64').toString(); }
-
-    static deleteProps(obj: any, props: any[]) {
-        for (let prop of props) delete obj[prop];
-        return obj;
     }
 
     /** @example groupBy([{name:'joe',age:30},{name:'x',age:30},{name:'y',age:31}],'age') will return {30:Array(2),31:Array(1)} */
@@ -167,9 +114,7 @@ export class Util {
         }
     }
 
-    /** Upgrade to Object.keys
-     * @example keys({ a:1, b:2}) returns Array<'a' | 'b'> 
-     */
+    /** @example keys({ a:1, b:2}) returns Array<'a' | 'b'> */
     static keys = <T extends Object>(o: T) => Object.keys(o) as Array<keyof typeof o>;
 
     /** @example countBy([{name:'x',job:'cleaner'},{name:'y',job:'accountant'}],'job') will return {accountant:1,cleaner:1} */
@@ -182,11 +127,8 @@ export class Util {
     }
 
     static safeStringify = (obj: any, indent = 2) => JSON.stringify(Util.deepClone(obj), null, indent);
-
     static shallowClone<T = any>(obj: T): T { return obj ? JSON.parse(JSON.stringify(obj)) : obj; }
-
-    /** Clone an object deeply optionally including symbols, undefined, and circular structures */
-    static deepClone2(
+    static deepDeepClone(
         obj: any,
         { keys = new Set<string>, seen = new WeakMap, symbols = true, circular = true }: {
             keys?: Set<string>; seen?: WeakMap<any, any>; symbols?: boolean; circular?: boolean;
@@ -198,7 +140,7 @@ export class Util {
         seen.set(obj, clone);
         for (const key of [...(symbols ? Object.getOwnPropertySymbols(obj) : []), ...Object.getOwnPropertyNames(obj)]) {
             const val = obj[key];
-            clone[key] = this.deepClone2(val, { seen, symbols, circular })
+            clone[key] = this.deepDeepClone(val, { seen, symbols, circular })
         }
         return clone
     }
@@ -217,21 +159,13 @@ export class Util {
         }));
     }
 
+    static equalsDeep(obj1: any, obj2: any): boolean { return obj1 === obj2 || equal(obj1, obj2); }
     static equals(obj1: any, obj2: any) {
-        if (obj1 === obj2)
-            return true;
-        else {
-            const json = Util.safely(() => [obj1, obj2].map(v => this.toJSON(v))); // we must use toJSON to ensure consistent predictable toJSON  ( sorted by key )
+        return obj1 === obj2 || (() => {
+            const json = Util.safely(() => [obj1, obj2].map(v => this.safeStringify(v, 0)));
             return json ? json[0] === json[1] : undefined;
-        }
+        })();
     }
-
-    static equalsDeep(obj1: any, obj2: any): boolean {
-        return obj1 === obj2 || equal(obj1, obj2);
-    }
-
-    static deepEquals(a: any, b: any) { return this.equalsDeep(a, b) } // TODO: REFACTOR
-
 
     static without<T>(arr: T[], values: any[], { allOccurrences = false } = {}): T[] {
         values = [...values];
@@ -325,12 +259,11 @@ export class Util {
         return { result, ms };
     }
 
-    static findWhere<T>(arr: T[], criteria: Partial<T>): T | undefined {
-        return arr.find(el => this.matches(el, criteria));
-    }
+    static findWhere<T>(arr: T[], criteria: Partial<T>): T | undefined { return arr.find(el => this.matches(el, criteria)); }
 
+    static RETRY_DEFAULTS = { timeout: 300000, pause: 1000 };
     static async retry<T>(
-        { block, timeout = this.defaults.timeout, retries = Infinity, pause = this.defaults.pause, onError }:
+        { block, timeout = this.RETRY_DEFAULTS.timeout, retries = Infinity, pause = this.RETRY_DEFAULTS.pause, onError }:
             { block: (failures: number) => Promise<T>; timeout?: number; retries?: number; pause?: number; onError?: Function }
     ): Promise<T> {
         const startTime = new Date(); let failures = 0;
@@ -734,22 +667,6 @@ export class Util {
         };
     }
 
-    static base64ToArrayBuffer(base64: string) {
-        const binary_string = this.atob(base64);
-        const len = binary_string.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++)  bytes[i] = binary_string.charCodeAt(i);
-        return bytes.buffer;
-    }
-
-    static arrayBufferToBase64(buffer: ArrayBuffer) {
-        let binary = "";
-        const bytes = new Uint8Array(buffer);
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
-        return this.btoa(binary);
-    }
-
     static isUniversallyAcceptedFilename(filename: string) {
         return /^[^\\\/:*?"<>|0-9\s]+[^\\\/:*?"<>|\.]$/.test(filename)
             && !/^(CON|AUX|PRN|NUL|COM\d|LPT\d)$/i.test(filename)
@@ -759,7 +676,7 @@ export class Util {
     static UniverallyAcceptedFilename(filename: string) {
         return this.isUniversallyAcceptedFilename(filename)
             ? filename
-            : Util.toBase64(filename, true);
+            : Base64.encodeSync(filename, { urlsafe: true });
     }
 
     static async streamToString(stream: ReadableStream) {
