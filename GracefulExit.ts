@@ -7,24 +7,25 @@ export class GracefulExit {
     private static initialized = false;
     static addListener(handler: (code: number | Error, event: string) => Promise<any>, description?: string) {
         this.listeners.push({ handler, description });
-        if (!this.initialized) {
-            this.initialized = true;
-            let handled = false;
-            for (const event of this.events)
-                process.on(event as any, async (code: any) => {
-                    if (!handled) {
-                        handled = true;
-                        if (this.listeners.length) {
-                            console.error('Terminating gracefully...', event, code);
-                            for (const { handler, description } of this.listeners)
-                                await handler(code, event)
-                                    .catch(e => console.error(description, e));
-                            console.error('/Terminated');
+        if (typeof process !== 'undefined')
+            if (!this.initialized) {
+                this.initialized = true;
+                let handled = false;
+                for (const event of this.events)
+                    process?.on(event as any, async (code: any) => {
+                        if (!handled) {
+                            handled = true;
+                            if (this.listeners.length) {
+                                console.error('Terminating gracefully...', event, code);
+                                for (const { handler, description } of this.listeners)
+                                    await handler(code, event)
+                                        .catch(e => console.error(description, e));
+                                console.error('/Terminated');
+                            }
+                            process.exit(event == 'exit' ? code : 1 + this.events.indexOf(event));
                         }
-                        process.exit(event == 'exit' ? code : 1 + this.events.indexOf(event));
-                    }
-                });
-        }
+                    });
+            }
         return () => this.removeListener(handler);
     }
 
