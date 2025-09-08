@@ -18,6 +18,6 @@ export const chaiExpressHttpClient = (expressApp: Express) => <MinimalHttpClient
         const error = Object.assign(new Error(message), response.body || {}, { status });
         throw error;
     } else {
-        return responseType === 'text' ? response.text : response.body;
+        return method === 'head' ? response.headers : responseType === 'text' ? response.text : response.body;
     }
 });
