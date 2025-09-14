@@ -127,7 +127,7 @@ export class Util {
     }
 
     static safeStringify = (obj: any, indent = 2) => JSON.stringify(Util.deepClone(obj), null, indent);
-    static shallowClone<T = any>(obj: T): T { return obj ? JSON.parse(JSON.stringify(obj)) : obj; }
+    static shallowClone<T = any>(obj: T): T { return obj !== undefined ? JSON.parse(JSON.stringify(obj)) : obj; }
     static deepDeepClone(
         obj: any,
         { keys = new Set<string>, seen = new WeakMap, symbols = true, circular = true }: {

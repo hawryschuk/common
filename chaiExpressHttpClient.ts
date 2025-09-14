@@ -1,4 +1,4 @@
-import chai from 'chai'; chai.should();
+import chai from 'chai'; //chai.should();
 import chaiHttp from 'chai-http'; chai.use(chaiHttp);
 import { Express } from 'express';
 import { HttpClientRequestParams, MinimalHttpClient } from './MinimalHttpClient';
