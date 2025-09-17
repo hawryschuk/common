@@ -518,7 +518,7 @@ export class Util {
         return arr;
     }
 
-    static clearAllProperties(obj: any, incudeSymbols = true) {
+    static clearAllProperties(obj: any) {
         for (const symbol of Object.getOwnPropertySymbols(obj)) delete obj[symbol];
         for (const name of Object.getOwnPropertyNames(obj)) delete obj[name];
         return obj;
@@ -673,7 +673,7 @@ export class Util {
             && !/\s+$/.test(filename)
     }
 
-    static UniverallyAcceptedFilename(filename: string) {
+    static UniversallyAcceptedFilename(filename: string) {
         return this.isUniversallyAcceptedFilename(filename)
             ? filename
             : Base64.encodeSync(filename, { urlsafe: true });
