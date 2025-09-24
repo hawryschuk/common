@@ -162,7 +162,7 @@ export class Util {
     static equalsDeep(obj1: any, obj2: any): boolean { return obj1 === obj2 || equal(obj1, obj2); }
     static equals(obj1: any, obj2: any) {
         return obj1 === obj2 || (() => {
-            const json = Util.safely(() => [obj1, obj2].map(v => this.safeStringify(v, 0)));
+            const json = Util.safely(() => [obj1, obj2].map(v => Util.toJSON(v)));
             return json ? json[0] === json[1] : undefined;
         })();
     }
@@ -518,6 +518,7 @@ export class Util {
         return arr;
     }
 
+    static clearKeys(obj: any) { for (const key of Object.keys(obj)) delete obj[key]; return obj; }
     static clearAllProperties(obj: any) {
         for (const symbol of Object.getOwnPropertySymbols(obj)) delete obj[symbol];
         for (const name of Object.getOwnPropertyNames(obj)) delete obj[name];
@@ -696,6 +697,42 @@ export class Util {
                 : Util.toJSON(data)
         }
     };
+
+    static syncInto<T extends object>(target: T, source: Partial<T>): T {
+        for (const key of Object.keys(target))
+            if (!(key in source))
+                delete (target as any)[key];
+        for (const [key, value] of Object.entries(source)) {
+            const targetVal = (target as any)[key];
+            if (value === null || value === undefined)
+                (target as any)[key] = value;
+            else if (Array.isArray(value)) {
+                if (!Array.isArray(targetVal))
+                    (target as any)[key] = [];
+                const arr = (target as any)[key] as any[];
+                arr.length = value.length;
+                for (let i = 0; i < value.length; i++) {
+                    const srcEl = value[i];
+                    const tgtEl = arr[i];
+                    if (Array.isArray(srcEl)) {
+                        if (!Array.isArray(tgtEl)) arr[i] = [];
+                        this.syncInto(arr[i], srcEl);
+                    } else if (typeof srcEl === "object" && srcEl !== null) {
+                        if (typeof tgtEl !== "object" || tgtEl === null || Array.isArray(tgtEl))
+                            arr[i] = srcEl;
+                        this.syncInto(arr[i], srcEl);
+                    } else
+                        arr[i] = srcEl;
+                }
+            } else if (typeof value === "object") {
+                if (typeof targetVal !== "object" || targetVal === null || Array.isArray(targetVal))
+                    (target as any)[key] = value;
+                this.syncInto((target as any)[key], value);
+            } else
+                (target as any)[key] = value;
+        }
+        return target;
+    }
 
 }
 

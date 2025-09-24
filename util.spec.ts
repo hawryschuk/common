@@ -60,7 +60,7 @@ describe('Util', () => {
             do: () => x++,
         })
     });
-    it('finds an element with specifed property values from an array', () => {
+    it('finds an element with specified property values from an array', () => {
         expect(Util.findWhere([{ a: 1, b: 2 }, { a: 3, b: 4 }], { a: 3 })).to.deep.equal({ a: 3, b: 4 });
     });
     it('shuffles an array in place', async () => {
@@ -119,5 +119,14 @@ describe('Util', () => {
     it('does a binary search', () => {
         expect(Util.binarySearch([1, 2, 3, 4, 5], 3)).to.gte(0)
         expect(Util.binarySearch([1, 2, 3, 4, 5], 7)).to.equal(-1)
-    })
+    });
+
+    it('can synchronize an object with an updated source', () => {
+        const nestedRef: any = { a: 1, b: 2 };
+        const arrRef: any = [{ id: 1 }, { id: 2 }];
+        const target: any = { nested: nestedRef, arr: arrRef };
+        Util.syncInto(target, { nested: { a: 99 }, arr: [{ id: 1, x: 5 }] });
+        expect(target.nested === nestedRef).true;
+        expect(target.arr === arrRef).true;
+    });
 })

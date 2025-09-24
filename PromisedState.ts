@@ -5,7 +5,7 @@ export class PromisedState<A extends any[] = any[], T = any> {
   submit(...args: A) {
     this.reset();
     this.started = Date.now();
-    this.f(...args)
+    return this.f(...args)
       .then(r => this.result = r)
       .catch(e => this.error = e)
       .finally(() => this.finished = Date.now());
