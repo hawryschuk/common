@@ -6,7 +6,7 @@ export class CachedWrapper<T extends object> {
     constructor(private target: T) { }
     ClearCache() { this.cache.clear(); }
     cache = new Map<PropertyKey, unknown>();
-    proxy = new Proxy(this.target, {
+    proxy: T = new Proxy(this.target, {
         get: (obj, prop: string | symbol, receiver: any): any => {
             if (this.cache.has(prop)) {
                 return this.cache.get(prop);

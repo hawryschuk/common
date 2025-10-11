@@ -402,12 +402,10 @@ export class Util {
         let result!: T;
         while (!result) {
             if (!(result = await pred({ elapsed: new Date().getTime() - startTime, attempt: ++attempt }))) {
-                retries--;
-                if (retries <= 0) { throw new Error(`Util.waitUntil: timeout-retries`); }
-                if ((new Date().getTime() - startTime) > timeElapsed) {
-                    Error.stackTraceLimit = 100; // or a higher value, e.g., Infinity for unlimited
+                if (--retries <= 0)
+                    throw new Error(`Util.waitUntil: timeout-retries`);
+                else if ((new Date().getTime() - startTime) > timeElapsed)
                     throw new Error('Util.waitUntil: timeout-timeElapsed')
-                }
                 await this.pause(pause);
             }
         }
