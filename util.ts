@@ -50,7 +50,14 @@ export class Util {
     static pluck<T = any>(arr: any[], ...keys: (keyof T)[]): Partial<T>[];
     static pluck<T = any>(arr: any[], ...keys: (keyof T)[]): Partial<T>[] { return arr.map(i => keys.length > 1 ? this.pick(i, keys) : i[keys[0]]); }
 
-    static pick<T>(obj: T, props: Array<keyof T>): Partial<T> { return props.reduce((picked, prop) => ({ ...picked, [prop]: obj[prop] }), <any>{}); }
+    static pick<T>(obj: T, props: Array<keyof T>, onlyExistent = false): Partial<T> {
+        const picked = props.reduce((picked, prop) => {
+            if ((prop in (obj as any)) || !onlyExistent)
+                Object.assign(picked, { [prop]: obj[prop] });
+            return picked;
+        }, <any>{});
+        return picked;
+    }
     static unpick<T>(obj: T, props: (keyof T)[]): Partial<T> {
         return Object
             .entries(obj as any)
@@ -72,7 +79,7 @@ export class Util {
     }
 
     /** Generates the permutations of a given array */
-    static *permute<T>(items: T[]) {
+    static * permute<T>(items: T[]) {
         const c = new Array(items.length).fill(0);
         let i = 1, k, p;
         yield items.slice();
@@ -98,7 +105,7 @@ export class Util {
         return lengths.reduce((total, len) => total * len, 1);
     }
 
-    static *permutations<T = any>(choices: { [key: string]: any[] }): Generator<T> {
+    static * permutations<T = any>(choices: { [key: string]: any[] }): Generator<T> {
         const keys = Object.keys(choices).sort();
         const totalPermutations = this.totalPermutations(choices);
         for (let i = 0; i < totalPermutations; i++) {

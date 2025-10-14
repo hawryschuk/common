@@ -14,7 +14,7 @@ export const chaiExpressHttpClient = (expressApp: Express) => <MinimalHttpClient
         throw error;
     }
     if (status >= 400) {
-        const message = response.body?.error || response.body?.message || (response.body ? status : response.text);
+        const message = response.body?.error?.message || response.body?.error || response.body?.message || (response.body ? status : response.text);
         const error = Object.assign(new Error(message), response.body || {}, { status });
         throw error;
     } else {
