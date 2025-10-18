@@ -125,7 +125,7 @@ describe('Util', () => {
         const nestedRef: any = { a: 1, b: 2 };
         const arrRef: any = [{ id: 1 }, { id: 2 }];
         const target: any = { nested: nestedRef, arr: arrRef };
-        Util.syncInto(target, { nested: { a: 99 }, arr: [{ id: 1, x: 5 }] });
+        Util.syncInto({ target, source: { nested: { a: 99 }, arr: [{ id: 1, x: 5 }] } });
         expect(target.nested === nestedRef).true;
         expect(target.arr === arrRef).true;
     });

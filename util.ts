@@ -703,38 +703,87 @@ export class Util {
         }
     };
 
-    static syncInto<T extends object>(target: T, source: Partial<T>): T {
-        for (const key of Object.keys(target))
-            if (!(key in source))
-                delete (target as any)[key];
-        for (const [key, value] of Object.entries(source)) {
-            const targetVal = (target as any)[key];
-            if (value === null || value === undefined)
-                (target as any)[key] = value;
-            else if (Array.isArray(value)) {
-                if (!Array.isArray(targetVal))
-                    (target as any)[key] = [];
-                const arr = (target as any)[key] as any[];
-                arr.length = value.length;
-                for (let i = 0; i < value.length; i++) {
-                    const srcEl = value[i];
-                    const tgtEl = arr[i];
-                    if (Array.isArray(srcEl)) {
-                        if (!Array.isArray(tgtEl)) arr[i] = [];
-                        this.syncInto(arr[i], srcEl);
-                    } else if (typeof srcEl === "object" && srcEl !== null) {
-                        if (typeof tgtEl !== "object" || tgtEl === null || Array.isArray(tgtEl))
-                            arr[i] = srcEl;
-                        this.syncInto(arr[i], srcEl);
-                    } else
-                        arr[i] = srcEl;
+    static syncInto<T extends object>({
+        target,
+        source,
+        levels,
+        excluded,
+        included,
+        level = 1,
+    }: {
+        target: T;
+        source: Partial<T>;
+        levels?: number;
+        excluded?: Function[];
+        included?: Function[];
+        level?: number;
+    }): T {
+        if (included) Util.pushUnique(included, Array), Util.pushUnique(included, Date);
+
+        if (target !== source && (!levels || level <= levels)) {
+            if (target instanceof Date && source instanceof Date) {
+                target.setTime(source.getTime());
+            } else {
+                for (const key of Object.keys(target))
+                    if (!(key in source))
+                        delete (target as any)[key];
+
+                for (const [key, value] of Object.entries(source)) {
+                    const targetVal = (target as any)[key];
+                    const shouldSync = (val: any) =>
+                        (!included || included.some(ctor => val instanceof ctor)) &&
+                        (!excluded || !excluded.some(ctor => val instanceof ctor));
+
+                    if (targetVal instanceof Date && value instanceof Date) {
+                        targetVal.setTime(value.getTime());
+                    } else if (Array.isArray(value)) {
+                        if (!Array.isArray(targetVal))
+                            (target as any)[key] = [];
+                        const arr = (target as any)[key] as any[];
+                        arr.length = value.length;
+
+                        for (let i = 0; i < value.length; i++) {
+                            const srcEl = value[i];
+                            const tgtEl = arr[i];
+
+                            if (Array.isArray(srcEl)) {
+                                if (!Array.isArray(tgtEl)) arr[i] = [];
+                                if (shouldSync(srcEl))
+                                    this.syncInto({ target: arr[i], source: srcEl, levels, level: level + 1, included, excluded });
+                                else
+                                    arr[i] = srcEl;
+
+                            } else if (arr[i] instanceof Date && srcEl instanceof Date) {
+                                arr[i].setTime(srcEl.getTime());
+
+                            } else if (typeof srcEl === "object" && srcEl !== null) {
+                                if (shouldSync(srcEl)) {
+                                    if (typeof tgtEl !== "object" || tgtEl === null || Array.isArray(tgtEl))
+                                        arr[i] = Object.create(Object.getPrototypeOf(srcEl));
+                                    this.syncInto({ target: arr[i], source: srcEl, levels, level: level + 1, included, excluded });
+                                } else {
+                                    arr[i] = srcEl;
+                                }
+
+                            } else {
+                                arr[i] = srcEl;
+                            }
+                        }
+
+                    } else if (
+                        value &&
+                        typeof value === "object" &&
+                        shouldSync(value)
+                    ) {
+                        if (typeof targetVal !== "object" || targetVal === null || Array.isArray(targetVal))
+                            (target as any)[key] = Object.create(Object.getPrototypeOf(value));
+                        this.syncInto({ target: (target as any)[key], source: value, levels, level: level + 1, included, excluded });
+
+                    } else {
+                        (target as any)[key] = value;
+                    }
                 }
-            } else if (typeof value === "object") {
-                if (typeof targetVal !== "object" || targetVal === null || Array.isArray(targetVal))
-                    (target as any)[key] = value;
-                this.syncInto((target as any)[key], value);
-            } else
-                (target as any)[key] = value;
+            }
         }
         return target;
     }
