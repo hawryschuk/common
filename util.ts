@@ -726,7 +726,7 @@ export class Util {
             if (target instanceof Date && source instanceof Date) {
                 target.setTime(source.getTime());
             } else {
-                for (const key of allKeys(target))
+                for (const key of Object.keys(target))
                     if (!(key in source))
                         delete (target as any)[key];
 
