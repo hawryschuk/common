@@ -2,10 +2,13 @@ import chai from 'chai'; //chai.should();
 import chaiHttp from 'chai-http'; chai.use(chaiHttp);
 import { Express } from 'express';
 import { HttpClientRequestParams, MinimalHttpClient } from './MinimalHttpClient';
+import { Util } from './util';
 
 export const chaiExpressHttpClient = (expressApp: Express) => <MinimalHttpClient>(async (options: HttpClientRequestParams) => {
-    const { method = 'get', url = '', body = null, responseType = 'json', headers = {} } = options;
-    const x = chai.request(expressApp)[method](`/${url}`).set(headers).send(body);
+    let { method = 'get', url = '', body = null, responseType = 'json', headers = {} } = options;
+    body &&= Util.shallowClone(body)
+    const z = chai.request(expressApp)[method](`/${url}`).set(headers);
+    const x = (method === 'get' || method === 'delete') ? z.query(body) : z.send(body);
     const y = await x.then(response => ({ response })).catch(error => ({ error })) as any;
     const { response, error } = y as { response: Awaited<typeof x>; error: any; };
     const { status } = response || {};
