@@ -129,4 +129,27 @@ describe('Util', () => {
         expect(target.nested === nestedRef).true;
         expect(target.arr === arrRef).true;
     });
+
+    describe('Util::throttle', () => {
+        it('allows a certain number of blocks to run simultaneously', async () => {
+            let simul = 0; let max = 0; let calls = 0;
+            await Promise.all(new Array(10).fill(0).map(() => Util.throttle({
+                resource: 'test', users: 3, interval: 200, block: async () => {
+                    simul++;
+                    calls++;
+                    max = Math.max(max, simul);
+                    await Util.pause(50);
+                    simul--;
+                }
+            })));
+            expect(max).equal(3);
+            expect(calls).equal(4);
+        });
+        it('ensures the last block is executed, and previous blocks given while busy are dropped', async () => {
+            const strings: string[] = [];
+            const t = (s: string) => Util.throttle({ resource: 'test2', users: 1, interval: 100, block: async () => { strings.push(s) } });
+            await Promise.all([t('a'), t('b'), t('c')]);
+            expect(strings).deep.equals(['a', 'c']);
+        });
+    })
 })

@@ -363,26 +363,27 @@ export class Util {
      * - Ignores blocks when the queue is full
      * - Executes blocks LIFO
     */
-    static throttle<T>({ resource, block, users = 1, queue = 1, interval = 0, order = 'LIFO' }: { interval?: number; resource?: any; block?: () => Promise<T>; users?: number; queue?: number; order?: 'LIFO' | 'FIFO' }) {
+    static throttle<T>({ resource, block, users = 1, queue = 1, interval = 0 }: { interval?: number; resource?: any; block?: () => Promise<T>; users?: number; queue?: number; }) {
         resource ||= block;
-        type STATE = { busy: number; queue: Function[]; callers: { resolve: (value: T) => void; reject: (reason?: any) => void; }[]; calls: number[] };
-        const now = Date.now();
+        type STATE = { busy: number; queue: Array<{ task: Function, time: number }>; callers: { time: number; resolve: (value: T) => void; reject: (reason?: any) => void; }[]; calls: number[] };
         const throttled: Map<any, STATE> = (this as any)[Symbol.for('throttled')] ||= new Map;
         const state: STATE = throttled.get(resource) || (() => {
             const state: STATE = { busy: 0, queue: [], callers: [], calls: [] };
             throttled.set(resource, state);
             return state;
         })();
+        let now = Math.max(...state.queue.map(q => q.time + 1), Date.now());
         const promise = new Promise<T>((resolve, reject) => {
-            if (block) state.callers.push({ resolve, reject });
+            if (block) state.callers.push({ resolve, reject, time: now });
             else resolve(undefined as any);
         })
-        if (block && (state.queue.length + state.busy) < queue) {
-            state.queue[{ LIFO: 'unshift', FIFO: 'push' }[order] as any](block);
+        if (block) {
+            while (state.queue.length >= queue) state.queue.shift();    // when full-drop oldest
+            state.queue.push({ task: block, time: now });               // always keep the last
         }
-        this.removeElements(state.calls, ...state.calls.filter(time => (now - time) > interval));
+        this.removeElements(state.calls, ...state.calls.filter(t => (now - t) > interval));
         while (state.busy < users && state.queue.length) {
-            const task = state.queue.shift()!;
+            const { task, time } = state.queue.shift()!;
             const delay = state.calls.length >= users ? (state.calls[0] + interval) - now : 0;
             state.busy++;
             state.calls.push(now + delay);
@@ -392,11 +393,12 @@ export class Util {
                 .catch((error: Error) => ({ error }))
                 .then(async (result: { success?: T; error?: Error; }) => {
                     await Util.pause(interval);
-                    state.busy--;
-                    for (const caller of state.callers.splice(0)) {
-                        if ('success' in result) caller.resolve(result.success!);
-                        else caller.reject(result.error!);
+                    const callers = Util.removeElements(state.callers, ...state.callers.filter(caller => caller.time <= time));
+                    for (const { resolve, reject } of callers) {
+                        if ('success' in result) resolve(result.success!);
+                        else reject(result.error!);
                     }
+                    state.busy--;
                     this.throttle({ resource, users, queue, interval });
                 });
         }
