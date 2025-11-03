@@ -38,8 +38,8 @@ export class CachedWrapper<T extends object> {
                     target: value,
                     source: recomputed as any,
                     levels,
-                    included: included?.filter(i => i instanceof Function),
-                    excluded: excluded?.filter(i => i instanceof Function)
+                    included: (included as any)?.filter((i: any) => i instanceof Function),
+                    excluded: (excluded as any)?.filter((i: any) => i instanceof Function)
                 });
                 this.cache.set(key, value);
             } else if (value instanceof Object && !(recomputed instanceof Object) && poison) {
