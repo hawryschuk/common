@@ -10,3 +10,5 @@ export { TreeNode } from './TreeNode';
 export { TrieNode } from './Tries';
 export { Trie } from './Trie';
 export { Graph } from './Graph';
+export { Rectangle } from './Rectangle';
+export { Point } from './Point';
